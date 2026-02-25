@@ -34,17 +34,17 @@ func main() {
 
 	ctx := context.Background()
 
-	loginCfg, err := config.LoadLoginConfig()
+	cfg, err := config.LoadLoginConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		os.Exit(1)
 	}
 
-	cfg := browser.DefaultConfig()
-	cfg.Timeout = defaultTimeout
-	cfg.Headless = !*debug // Headless unless debug mode
+	browserCfg := browser.DefaultConfig()
+	browserCfg.Timeout = defaultTimeout
+	browserCfg.Headless = !*debug
 
-	pool, err := browser.NewPool(ctx, cfg)
+	pool, err := browser.NewPool(ctx, browserCfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating browser pool: %v\n", err)
 		os.Exit(1)
@@ -52,11 +52,11 @@ func main() {
 	defer pool.Close()
 
 	if *debug {
-		runDebug(ctx, pool, loginCfg.TargetURL)
+		runDebug(ctx, pool, cfg.TargetURL)
 		return
 	}
 
-	result, err := runLogin(ctx, pool, loginCfg)
+	result, err := runLogin(ctx, pool, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -65,18 +65,15 @@ func main() {
 	printResult(result)
 }
 
-// runLogin executes the login flow using semantic anchors
-func runLogin(ctx context.Context, pool *browser.Pool, loginCfg *config.LoginConfig) (*LoginResult, error) {
+func runLogin(ctx context.Context, pool *browser.Pool, cfg *config.LoginConfig) (*LoginResult, error) {
 	browserCtx, cancel := pool.NewContext(ctx)
 	defer cancel()
 
 	var sessionID, currentURL string
-	var result map[string]interface{}
 	var debugLog string
 
-	// 1. Navigate to page and wait for load
 	err := chromedp.Run(browserCtx,
-		chromedp.Navigate(loginCfg.TargetURL),
+		chromedp.Navigate(cfg.TargetURL),
 		chromedp.WaitReady("body", chromedp.ByQuery),
 		chromedp.Sleep(2*time.Second),
 	)
@@ -84,16 +81,13 @@ func runLogin(ctx context.Context, pool *browser.Pool, loginCfg *config.LoginCon
 		return nil, fmt.Errorf("navigation failed: %w", err)
 	}
 
-	// 2. Click "Entrar" button - ANCLA: texto exacto "Entrar"
 	err = chromedp.Run(browserCtx,
 		chromedp.Evaluate(`(() => {
-			// ANCLA: Buscar por texto exacto "Entrar" 
 			const entrarLink = document.getElementById('openLogin');
 			if (entrarLink) {
 				entrarLink.click();
 				return 'clicked-openLogin';
 			}
-			// Fallback: buscar por texto
 			const links = document.querySelectorAll('a, button');
 			for (const link of links) {
 				if (link.textContent?.trim().toLowerCase() === 'entrar') {
@@ -109,13 +103,9 @@ func runLogin(ctx context.Context, pool *browser.Pool, loginCfg *config.LoginCon
 		return nil, fmt.Errorf("click entrar failed: %w", err)
 	}
 
-	// 3. Fill login form using ANCHOR-BASED approach
-	// Strategy: Find inputs by proximity to text labels (robust against ID changes)
 	fillScript := fmt.Sprintf(`(() => {
 		const debug = [];
 		
-		// ANCLA: Primero encontrar el FORMULARIO de login
-		// Buscar formulario que contenga input[type="password"]
 		let loginForm = null;
 		const forms = document.querySelectorAll('form');
 		for (const form of forms) {
@@ -128,28 +118,23 @@ func runLogin(ctx context.Context, pool *browser.Pool, loginCfg *config.LoginCon
 			}
 		}
 		
-		// Si no encontramos formulario, usar todo el documento
 		const searchRoot = loginForm || document;
 		
 		let emailInput = null;
 		let passwordInput = null;
 		let submitButton = null;
 		
-		// ANCLA: Buscar password primero (es más específico)
 		const passwordInputs = searchRoot.querySelectorAll('input[type="password"]');
 		if (passwordInputs.length > 0) {
 			passwordInput = passwordInputs[0];
 			debug.push('Found password: ' + passwordInput.id);
 		}
 		
-		// ANCLA: Buscar email por ID o nombre que contenga "Email" o "email"
 		const textInputs = searchRoot.querySelectorAll('input[type="text"]');
 		for (const input of textInputs) {
 			const id = (input.id || '').toLowerCase();
 			const name = (input.name || '').toLowerCase();
-			const placeholder = (input.placeholder || '').toLowerCase();
 			
-			// Buscar el que tenga ID/nombre con "Email"
 			if (id.includes('email') || name.includes('email')) {
 				emailInput = input;
 				debug.push('Found email by id/name: ' + input.id);
@@ -157,7 +142,6 @@ func runLogin(ctx context.Context, pool *browser.Pool, loginCfg *config.LoginCon
 			}
 		}
 		
-		// Si no encontró por ID, usar el que tiene placeholder "..." (pero solo del form de login)
 		if (!emailInput && loginForm) {
 			for (const input of textInputs) {
 				const placeholder = (input.placeholder || '').toLowerCase();
@@ -170,12 +154,9 @@ func runLogin(ctx context.Context, pool *browser.Pool, loginCfg *config.LoginCon
 			}
 		}
 		
-		// ANCLA: Buscar botón de submit por texto dentro del formulario
-		// Primero buscar botón con texto "Iniciar"
 		const allButtons = searchRoot.querySelectorAll('button, input[type="submit"], [role="button"]');
 		for (const btn of allButtons) {
 			const text = (btn.textContent || btn.value || '').toLowerCase().trim();
-			// Buscar exactamente "Iniciar" o que contenga "iniciar" y esté en el formulario de login
 			if (text === 'iniciar sesión' || text === 'iniciar') {
 				submitButton = btn;
 				debug.push('Found submit button: ' + text + ' tag:' + btn.tagName);
@@ -183,11 +164,10 @@ func runLogin(ctx context.Context, pool *browser.Pool, loginCfg *config.LoginCon
 			}
 		}
 		
-		// Si no encontró, buscar cualquier botón submit
 		if (!submitButton) {
 			for (const btn of allButtons) {
-				const type = (btn.type || '').toLowerCase();
-				if (type === 'submit') {
+				const btnType = (btn.type || '').toLowerCase();
+				if (btnType === 'submit') {
 					submitButton = btn;
 					debug.push('Found submit button by type: ' + btn.tagName);
 					break;
@@ -195,47 +175,45 @@ func runLogin(ctx context.Context, pool *browser.Pool, loginCfg *config.LoginCon
 			}
 		}
 		
-		// Llenar los campos
-		if (emailInput) {
+		if (!emailInput) {
+			debug.push('ERROR: Email not found');
+		} else {
 			emailInput.value = '%s';
 			emailInput.dispatchEvent(new Event('input', { bubbles: true }));
 			emailInput.dispatchEvent(new Event('change', { bubbles: true }));
 			debug.push('Filled email OK');
-		} else {
-			debug.push('ERROR: Email not found');
 		}
 		
-		if (passwordInput) {
+		if (!passwordInput) {
+			debug.push('ERROR: Password not found');
+		} else {
 			passwordInput.value = '%s';
 			passwordInput.dispatchEvent(new Event('input', { bubbles: true }));
 			passwordInput.dispatchEvent(new Event('change', { bubbles: true }));
 			debug.push('Filled password OK');
-		} else {
-			debug.push('ERROR: Password not found');
 		}
 		
-		// Click submit BUTTON (not form.submit()) - esto es importante para JSF
 		if (submitButton) {
 			submitButton.click();
 			debug.push('Clicked submit button');
-		} else if (loginForm) {
-			// Solo como último recurso
-			loginForm.submit();
-			debug.push('Submitted form (last resort)');
 		} else {
-			debug.push('ERROR: No submit method');
+			if (loginForm) {
+				loginForm.submit();
+				debug.push('Submitted form (last resort)');
+			} else {
+				debug.push('ERROR: No submit method');
+			}
 		}
 		
 		return debug.join(' | ');
-	})()`, loginCfg.Username, loginCfg.Password)
+	})()`, cfg.Username, cfg.Password)
 
+	var extractResult map[string]interface{}
 	err = chromedp.Run(browserCtx,
 		chromedp.Evaluate(fillScript, &debugLog),
 		chromedp.Sleep(4*time.Second),
-		// Check URL after login attempt
 		chromedp.Location(&currentURL),
 		chromedp.Evaluate(`document.cookie.match(/JSESSIONID=([^;]+)/)?.[1] || ''`, &sessionID),
-		// Get page content for debugging
 		chromedp.Evaluate(`(() => {
 			return {
 				url: window.location.href,
@@ -245,13 +223,12 @@ func runLogin(ctx context.Context, pool *browser.Pool, loginCfg *config.LoginCon
 					document.body.textContent.includes('error'),
 				bodyText: document.body.innerText.substring(0, 500)
 			};
-		})()`, &result),
+		})()`, &extractResult),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("login fill failed: %w", err)
 	}
 
-	// 4. Navigate to search URL
 	err = chromedp.Run(browserCtx,
 		chromedp.Navigate(searchURL),
 		chromedp.WaitReady("body", chromedp.ByQuery),
@@ -262,29 +239,25 @@ func runLogin(ctx context.Context, pool *browser.Pool, loginCfg *config.LoginCon
 		return nil, fmt.Errorf("search navigation failed: %w", err)
 	}
 
-	// 5. Extract hotel data and cookies
 	extractScript := buildExtractScript()
-	var extractResult map[string]interface{}
+	var hotelData map[string]interface{}
 	err = chromedp.Run(browserCtx,
-		chromedp.Evaluate(extractScript, &extractResult),
+		chromedp.Evaluate(extractScript, &hotelData),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("extraction failed: %w", err)
 	}
 
-	// Get session info
-	if cookies, ok := extractResult["cookies"].(string); ok {
-		// Try to extract session ID from cookies
+	if cookies, ok := hotelData["cookies"].(string); ok {
 		if match := extractSessionFromCookies(cookies); match != "" {
 			sessionID = match
 		}
 	}
 
-	return parseResult(sessionID, currentURL, extractResult, debugLog), nil
+	return parseResult(sessionID, currentURL, hotelData, debugLog), nil
 }
 
 func extractSessionFromCookies(cookies string) string {
-	// Look for common session cookie names
 	sessionNames := []string{"JSESSIONID", "SESSIONID", "JSESSIONID_SSO", "PHPSESSID", "ASP.NET_SessionId"}
 	for _, name := range sessionNames {
 		for _, cookie := range strings.Split(cookies, ";") {
@@ -300,7 +273,6 @@ func extractSessionFromCookies(cookies string) string {
 	return ""
 }
 
-// runDebug analyzes the page structure for development
 func runDebug(ctx context.Context, pool *browser.Pool, url string) {
 	browserCtx, cancel := pool.NewContext(ctx)
 	defer cancel()
@@ -318,20 +290,17 @@ func runDebug(ctx context.Context, pool *browser.Pool, url string) {
 		os.Exit(1)
 	}
 
-	// Print nicely formatted
 	data, _ := json.MarshalIndent(pageStruct, "", "  ")
 	fmt.Println(string(data))
 }
 
 func buildDebugScript() string {
 	return `(() => {
-		// First click "Entrar" to open modal
 		const entrarLink = document.getElementById('openLogin');
 		if (entrarLink) {
 			entrarLink.click();
 		}
 		
-		// Wait for modal to appear (synchronous wait)
 		let attempts = 0;
 		while (attempts < 10) {
 			const modal = document.querySelector('[id*="login"]:not(#openLogin), [class*="modal"]:not(.hidden)');
@@ -349,7 +318,6 @@ func buildDebugScript() string {
 			login_form: null
 		};
 
-		// Look for modals
 		document.querySelectorAll('[class*="modal"], [id*="modal"], [id*="login"]').forEach(el => {
 			const text = el.textContent?.trim();
 			if (text && text.length > 10) {
@@ -362,7 +330,6 @@ func buildDebugScript() string {
 			}
 		});
 
-		// Extract all forms
 		document.querySelectorAll('form').forEach((form, i) => {
 			const inputs = [];
 			form.querySelectorAll('input, button').forEach(el => {
@@ -378,7 +345,6 @@ func buildDebugScript() string {
 			result.forms.push({ index: i, action: form.action, inputs: inputs });
 		});
 
-		// Extract buttons with their text
 		document.querySelectorAll('button, a, [role="button"]').forEach((el, i) => {
 			const text = el.textContent?.trim();
 			if (text && text.length > 0 && text.length < 30) {
@@ -392,7 +358,6 @@ func buildDebugScript() string {
 			}
 		});
 
-		// Extract all inputs
 		document.querySelectorAll('input').forEach((el, i) => {
 			result.inputs.push({
 				index: i,
@@ -404,7 +369,6 @@ func buildDebugScript() string {
 			});
 		});
 
-		// Look for login form specifically - by input type and proximity
 		document.querySelectorAll('form').forEach(form => {
 			const action = form.action || '';
 			const hasPassword = form.querySelector('input[type="password"]') !== null;
@@ -432,10 +396,8 @@ func buildDebugScript() string {
 func buildExtractScript() string {
 	return `(() => {
 		try {
-			// Get all cookies first
 			const cookies = document.cookie;
 			
-			// Try multiple selectors for hotels
 			const selectors = [
 				'.hotel-card', '.hotel-result', '.accommodation-card',
 				'[class*="hotel"]', '[class*="result"]', '[class*="accommodation"]',
@@ -451,7 +413,6 @@ func buildExtractScript() string {
 			}
 			
 			if (hotels.length === 0) {
-				// Fallback: extract from page text
 				const body = document.body ? document.body.innerText : '';
 				return { 
 					cookies: cookies,
@@ -481,7 +442,6 @@ func buildExtractScript() string {
 				};
 			}
 			
-			// Last resort: look for any price on page
 			const prices = document.querySelectorAll('[class*="price"], .amount, .value, span');
 			const names = document.querySelectorAll('h1, h2, h3, h4');
 			
@@ -508,7 +468,6 @@ func parseResult(sessionID, url string, raw map[string]interface{}, debug string
 		Debug: debug,
 	}
 
-	// If we're on the results page (not login page), consider it successful
 	if !strings.Contains(url, "login.xhtml") && !strings.Contains(url, "login?") {
 		result.SessionID = "LOGGED_IN"
 	}
@@ -520,7 +479,6 @@ func parseResult(sessionID, url string, raw map[string]interface{}, debug string
 		result.Price = price
 	}
 
-	// Debug: show cookies if present
 	if cookies, ok := raw["cookies"].(string); ok && cookies != "" {
 		result.Debug += " | Cookies: " + strings.Split(cookies, ";")[0] + "..."
 	}
@@ -529,15 +487,15 @@ func parseResult(sessionID, url string, raw map[string]interface{}, debug string
 }
 
 func printResult(r *LoginResult) {
-	fmt.Println("=== RESULTADO ===")
-	if r.SessionID != "" {
-		fmt.Printf("Session ID: %s\n", r.SessionID)
-	} else {
-		fmt.Println("Session ID: (no obtenido)")
+	fmt.Println("=== RESULT ===")
+	if r.SessionID == "" {
+		fmt.Println("Session ID: (not obtained)")
+		return
 	}
+	fmt.Printf("Session ID: %s\n", r.SessionID)
 	fmt.Printf("URL: %s\n", r.URL)
 	fmt.Printf("Hotel: %s\n", r.HotelName)
-	fmt.Printf("Precio: %s\n", r.Price)
+	fmt.Printf("Price: %s\n", r.Price)
 	if r.Debug != "" {
 		fmt.Printf("Debug: %s\n", r.Debug)
 	}
