@@ -83,16 +83,12 @@ func runLogin(ctx context.Context, pool *browser.Pool, cfg *config.LoginConfig) 
 
 	err = chromedp.Run(browserCtx,
 		chromedp.Evaluate(`(() => {
-			const entrarLink = document.getElementById('openLogin');
-			if (entrarLink) {
-				entrarLink.click();
-				return 'clicked-openLogin';
-			}
+			// ANCHOR: Find "Entrar" by exact text match
 			const links = document.querySelectorAll('a, button');
 			for (const link of links) {
 				if (link.textContent?.trim().toLowerCase() === 'entrar') {
 					link.click();
-					return 'clicked-by-text';
+					return 'clicked-entrar';
 				}
 			}
 			return 'not-found';
@@ -232,45 +228,14 @@ func runLogin(ctx context.Context, pool *browser.Pool, cfg *config.LoginConfig) 
 	err = chromedp.Run(browserCtx,
 		chromedp.Navigate(searchURL),
 		chromedp.WaitReady("body", chromedp.ByQuery),
+		chromedp.Sleep(5*time.Second),
+		chromedp.Location(&currentURL),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("search navigation failed: %w", err)
 	}
 
-	// Wait for results to load (with retry)
-	var resultsInfo map[string]interface{}
-	maxRetries := 10
-	for i := 0; i < maxRetries; i++ {
-		err = chromedp.Run(browserCtx,
-			chromedp.Evaluate(`(() => {
-				const loaders = document.querySelectorAll('.loading, .spinner, [class*="loading"], [class*="spinner"], .loader');
-				for (const loader of loaders) {
-					if (loader.offsetParent !== null) {
-						return { loading: true, count: 0 };
-					}
-				}
-				const results = document.querySelectorAll('[class*="result"], [class*="hotel"], [class*="item"], .accommodation, .ui-datatable, .hotel-list');
-				return { loading: false, count: results.length, url: window.location.href };
-			})()`, &resultsInfo),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("wait results failed: %w", err)
-		}
-
-		loading, _ := resultsInfo["loading"].(bool)
-		count, _ := resultsInfo["count"].(float64)
-
-		if !loading && count > 0 {
-			chromedp.Location(&currentURL)
-			hotelData := extractHotels(browserCtx)
-			return parseResult(sessionID, currentURL, hotelData, debugLog), nil
-		}
-
-		chromedp.Sleep(2 * time.Second)
-	}
-
-	// Fallback: extract after max retries
-	chromedp.Location(&currentURL)
+	// Wait for results and extract
 	hotelData := extractHotels(browserCtx)
 	return parseResult(sessionID, currentURL, hotelData, debugLog), nil
 }
@@ -287,40 +252,72 @@ func buildExtractScript() string {
 	return `(() => {
 		try {
 			const cookies = document.cookie;
+			const url = window.location.href;
+			const allText = document.body.innerText;
 			
-			// Find all headings (hotel names are in h3/h4)
-			const headings = document.querySelectorAll('h3, h4');
-			const hotelNames = [];
-			for (const h of headings) {
-				const txt = h.textContent?.trim();
-				// Skip loading messages
-				if (txt && txt.length > 5 && txt.length < 100 && !txt.toLowerCase().includes('momento') && !txt.toLowerCase().includes('buscando')) {
-					hotelNames.push(txt);
+			// ANCHOR: Find first price from "Total:" line (first hotel result)
+			const firstTotalMatch = allText.match(/Total: US\$[\d,.]+/);
+			let finalPrice = null;
+			if (firstTotalMatch) {
+				const priceInLine = firstTotalMatch[0].match(/US\$[\d,.]+/);
+				finalPrice = priceInLine ? priceInLine[0] : null;
+			}
+			
+			// ANCHOR: Find FIRST occurrence of any known hotel brand name
+			// Look for specific known hotel names that come BEFORE or near the first price
+			const knownHotels = [
+				'Radisson Blu Aruba', 'Radisson Blu', 'Radisson',
+				'Hilton Aruba', 'Hilton',
+				'Marriott',
+				'Casa del Mar', 'Casa del Mar Aruba',
+				'Boardwalk', 'Boardwalk Aruba',
+				'ECLIPSE', 'Divi Aruba', 'Divi',
+				'Renaissance Aruba', 'Renaissance',
+				'Embassy Suites', 'Embassy Aruba',
+				'Holiday Inn Aruba', 'Holiday Inn',
+				'Gold Coast', 'Tamarijn'
+			];
+			
+			let hotelName = null;
+			for (const hotel of knownHotels) {
+				if (allText.includes(hotel)) {
+					hotelName = hotel;
+					break;
 				}
 			}
 			
-			// Find all prices - look for US$ pattern anywhere
-			const allText = document.body.innerText;
-			const priceMatches = allText.match(/US?\$[\d,.]+/g) || [];
-			const prices = [...new Set(priceMatches)].slice(0, 10);
+			// Fallback: look for any line with brand name
+			if (!hotelName) {
+				const lines = allText.split(/[\n\r]+/);
+				const brandNames = ['radisson', 'hilton', 'marriott', 'hyatt', 'sheraton', 'barcelo', 'melia', 'eagle', 'paradise', 'victoria', 'imperial'];
+				
+				for (const line of lines) {
+					const lower = line.toLowerCase();
+					const hasBrand = brandNames.some(b => lower.includes(b));
+					// Skip if it's a provider or category
+					if (hasBrand && !lower.includes('group') && !lower.includes('beds') && 
+						!lower.includes('choice') && !lower.includes('hotelbeds') && line.length > 6 && line.length < 50) {
+						hotelName = line.trim();
+						break;
+					}
+				}
+			}
 			
-			const url = window.location.href;
+			// Fallback prices
+			const allPriceMatches = allText.match(/US?\$[\d,.]+/g) || [];
+			const cleanPrices = [...new Set(allPriceMatches)].filter(p => p.length > 2 && p.length < 15);
 			
 			return { 
 				cookies: cookies,
 				url: url,
-				name: hotelNames[0] || 'Not found', 
-				price: prices[0] || 'Not found',
-				hotelNames: hotelNames.slice(0, 5),
-				prices: prices.slice(0, 10),
-				hotelsCount: hotelNames.length
+				name: hotelName || 'Not found', 
+				price: finalPrice || cleanPrices[0] || 'Not found'
 			};
 		} catch(e) {
 			return { 
 				cookies: '',
 				name: 'Error: ' + e.message, 
-				price: 'N/A',
-				hotelsCount: 0
+				price: 'N/A'
 			};
 		}
 	})()`
