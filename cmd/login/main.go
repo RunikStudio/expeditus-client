@@ -232,29 +232,98 @@ func runLogin(ctx context.Context, pool *browser.Pool, cfg *config.LoginConfig) 
 	err = chromedp.Run(browserCtx,
 		chromedp.Navigate(searchURL),
 		chromedp.WaitReady("body", chromedp.ByQuery),
-		chromedp.Sleep(2*time.Second),
-		chromedp.Location(&currentURL),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("search navigation failed: %w", err)
 	}
 
-	extractScript := buildExtractScript()
-	var hotelData map[string]interface{}
-	err = chromedp.Run(browserCtx,
-		chromedp.Evaluate(extractScript, &hotelData),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("extraction failed: %w", err)
-	}
-
-	if cookies, ok := hotelData["cookies"].(string); ok {
-		if match := extractSessionFromCookies(cookies); match != "" {
-			sessionID = match
+	// Wait for results to load (with retry)
+	var resultsInfo map[string]interface{}
+	maxRetries := 10
+	for i := 0; i < maxRetries; i++ {
+		err = chromedp.Run(browserCtx,
+			chromedp.Evaluate(`(() => {
+				const loaders = document.querySelectorAll('.loading, .spinner, [class*="loading"], [class*="spinner"], .loader');
+				for (const loader of loaders) {
+					if (loader.offsetParent !== null) {
+						return { loading: true, count: 0 };
+					}
+				}
+				const results = document.querySelectorAll('[class*="result"], [class*="hotel"], [class*="item"], .accommodation, .ui-datatable, .hotel-list');
+				return { loading: false, count: results.length, url: window.location.href };
+			})()`, &resultsInfo),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("wait results failed: %w", err)
 		}
+
+		loading, _ := resultsInfo["loading"].(bool)
+		count, _ := resultsInfo["count"].(float64)
+
+		if !loading && count > 0 {
+			chromedp.Location(&currentURL)
+			hotelData := extractHotels(browserCtx)
+			return parseResult(sessionID, currentURL, hotelData, debugLog), nil
+		}
+
+		chromedp.Sleep(2 * time.Second)
 	}
 
+	// Fallback: extract after max retries
+	chromedp.Location(&currentURL)
+	hotelData := extractHotels(browserCtx)
 	return parseResult(sessionID, currentURL, hotelData, debugLog), nil
+}
+
+func extractHotels(ctx context.Context) map[string]interface{} {
+	var result map[string]interface{}
+	chromedp.Run(ctx,
+		chromedp.Evaluate(buildExtractScript(), &result),
+	)
+	return result
+}
+
+func buildExtractScript() string {
+	return `(() => {
+		try {
+			const cookies = document.cookie;
+			
+			// Find all headings (hotel names are in h3/h4)
+			const headings = document.querySelectorAll('h3, h4');
+			const hotelNames = [];
+			for (const h of headings) {
+				const txt = h.textContent?.trim();
+				// Skip loading messages
+				if (txt && txt.length > 5 && txt.length < 100 && !txt.toLowerCase().includes('momento') && !txt.toLowerCase().includes('buscando')) {
+					hotelNames.push(txt);
+				}
+			}
+			
+			// Find all prices - look for US$ pattern anywhere
+			const allText = document.body.innerText;
+			const priceMatches = allText.match(/US?\$[\d,.]+/g) || [];
+			const prices = [...new Set(priceMatches)].slice(0, 10);
+			
+			const url = window.location.href;
+			
+			return { 
+				cookies: cookies,
+				url: url,
+				name: hotelNames[0] || 'Not found', 
+				price: prices[0] || 'Not found',
+				hotelNames: hotelNames.slice(0, 5),
+				prices: prices.slice(0, 10),
+				hotelsCount: hotelNames.length
+			};
+		} catch(e) {
+			return { 
+				cookies: '',
+				name: 'Error: ' + e.message, 
+				price: 'N/A',
+				hotelsCount: 0
+			};
+		}
+	})()`
 }
 
 func extractSessionFromCookies(cookies string) string {
@@ -390,75 +459,6 @@ func buildDebugScript() string {
 		});
 
 		return result;
-	})()`
-}
-
-func buildExtractScript() string {
-	return `(() => {
-		try {
-			const cookies = document.cookie;
-			
-			const selectors = [
-				'.hotel-card', '.hotel-result', '.accommodation-card',
-				'[class*="hotel"]', '[class*="result"]', '[class*="accommodation"]',
-				'.item', '.result-item', '.list-item'
-			];
-			
-			let hotels = [];
-			for (const sel of selectors) {
-				hotels = document.querySelectorAll(sel);
-				if (hotels.length > 0) {
-					break;
-				}
-			}
-			
-			if (hotels.length === 0) {
-				const body = document.body ? document.body.innerText : '';
-				return { 
-					cookies: cookies,
-					name: 'Page content', 
-					price: body.substring(0, 300),
-					hotelsCount: 0
-				};
-			}
-			
-			const results = [];
-			for (const hotel of hotels) {
-				const nameEl = hotel.querySelector('h1, h2, h3, h4, [class*="name"], [class*="title"]');
-				const priceEl = hotel.querySelector('[class*="price"], [class*="amount"], .price');
-				const name = nameEl ? nameEl.textContent?.trim() : null;
-				const price = priceEl ? priceEl.textContent?.trim() : null;
-				if (name || price) {
-					results.push({ name: name || 'Unknown', price: price || 'Unknown' });
-				}
-			}
-			
-			if (results.length > 0) {
-				return { 
-					cookies: cookies,
-					name: results[0].name, 
-					price: results[0].price,
-					hotelsCount: results.length
-				};
-			}
-			
-			const prices = document.querySelectorAll('[class*="price"], .amount, .value, span');
-			const names = document.querySelectorAll('h1, h2, h3, h4');
-			
-			return { 
-				cookies: cookies,
-				name: names.length > 0 ? names[0].textContent?.trim() : 'Not found', 
-				price: prices.length > 0 ? prices[0].textContent?.trim() : 'Not found',
-				hotelsCount: hotels.length
-			};
-		} catch(e) {
-			return { 
-				cookies: '',
-				name: 'Error: ' + e.message, 
-				price: 'N/A',
-				hotelsCount: 0
-			};
-		}
 	})()`
 }
 
