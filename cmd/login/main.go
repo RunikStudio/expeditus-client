@@ -14,11 +14,11 @@ import (
 
 const (
 	searchURL      = "https://www.delfos.tur.ar/home?directSubmit=true&latestSearch=true&tripType=ONLY_HOTEL&departureDate=09/05/2026&arrivalDate=23/05/2026&hotelDestination=Destination::AUA"
-	loginModalBtn  = "#openLogin"
-	emailInput     = "#j_id_4s_3_1:login-content:login\\:Email"
-	passwordInput  = "#j_id_4s_3_1:login-content:login\\:j_password"
-	submitBtn      = "#j_id_4s_3_1:login-content:login\\:signin"
-	defaultTimeout = 30 * time.Second
+	loginModalBtn  = "button:contains('Entrar'), a:contains('Entrar'), [id*='login'], [class*='login']"
+	emailInput     = "input[type='email'], input[id*='email'], input[id*='Email'], input[name*='email']"
+	passwordInput  = "input[type='password'], input[id*='password'], input[id*='Password'], input[name*='password']"
+	submitBtn      = "button[type='submit'], button:contains('Iniciar'), button:contains('Entrar'), input[type='submit']"
+	defaultTimeout = 60 * time.Second
 )
 
 type LoginResult struct {
@@ -63,18 +63,33 @@ func runLogin(ctx context.Context, pool *browser.Pool, loginCfg *config.LoginCon
 	var sessionID, currentURL string
 	var result map[string]interface{}
 
-	loginScript := buildLoginScript(loginCfg.Username, loginCfg.Password)
-
 	err := chromedp.Run(browserCtx,
 		chromedp.Navigate(loginCfg.TargetURL),
-		chromedp.WaitVisible(loginModalBtn, chromedp.ByQuery),
-		chromedp.Click(loginModalBtn, chromedp.ByQuery),
-		chromedp.WaitVisible(emailInput, chromedp.ByQuery),
-		chromedp.SendKeys(emailInput, loginCfg.Username, chromedp.ByQuery),
-		chromedp.SendKeys(passwordInput, loginCfg.Password, chromedp.ByQuery),
-		chromedp.Click(submitBtn, chromedp.ByQuery),
-		chromedp.WaitNotVisible(submitBtn, chromedp.ByQuery),
-		chromedp.Evaluate(loginScript, &sessionID),
+		chromedp.WaitReady("body", chromedp.ByQuery),
+		chromedp.Sleep(2*time.Second),
+		chromedp.Evaluate(`(() => {
+			const entrarBtn = Array.from(document.querySelectorAll('button, a')).find(el => el.textContent.includes('Entrar'));
+			if (entrarBtn) { entrarBtn.click(); return 'clicked'; }
+			return 'not found';
+		})()`, nil),
+		chromedp.Sleep(2*time.Second),
+		chromedp.Evaluate(`(() => {
+			const emailInput = document.querySelector('input[type="email"], input[id*="email" i], input[name*="email" i]');
+			const passwordInput = document.querySelector('input[type="password"], input[id*="password" i], input[name*="password" i]');
+			if (emailInput) emailInput.value = '`+loginCfg.Username+`';
+			if (passwordInput) passwordInput.value = '`+loginCfg.Password+`';
+			return (emailInput && passwordInput) ? 'filled' : 'inputs not found';
+		})()`, nil),
+		chromedp.Sleep(1*time.Second),
+		chromedp.Evaluate(`(() => {
+			const submitBtn = Array.from(document.querySelectorAll('button[type="submit"], button, input[type="submit"]')).find(el => el.textContent.includes('Iniciar') || el.textContent.includes('Entrar'));
+			if (submitBtn) { submitBtn.click(); return 'clicked'; }
+			const forms = document.querySelectorAll('form');
+			if (forms.length > 0) { forms[0].submit(); return 'form submitted'; }
+			return 'not found';
+		})()`, nil),
+		chromedp.Sleep(3*time.Second),
+		chromedp.Evaluate(`document.cookie.match(/JSESSIONID=([^;]+)/)?.[1] || ''`, &sessionID),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("login failed: %w", err)

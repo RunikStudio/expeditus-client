@@ -1,1 +1,9 @@
 .env
+login
+inspector
+*.exe
+*.dll
+*.so
+*.dylib
+/bin/
+/vendor/

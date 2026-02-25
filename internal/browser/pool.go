@@ -22,7 +22,7 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{
-		ExecPath:      "/tmp/chrome-linux/chrome",
+		ExecPath:      "/usr/bin/chromium",
 		Headless:      true,
 		NoSandbox:     true,
 		Timeout:       30 * time.Second,
