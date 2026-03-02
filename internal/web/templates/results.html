@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resultados - Expeditus</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/results.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Resultados del Scraping</h1>
+            <a href="/" class="back-link">← Volver al inicio</a>
+        </header>
+
+        <main>
+            <section class="summary">
+                <div class="card stats-grid">
+                    <div class="stat">
+                        <span class="stat-value" id="totalResults">0</span>
+                        <span class="stat-label">Total de Resultados</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value" id="successRate">0%</span>
+                        <span class="stat-label">Tasa de Éxito</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value" id="duration">0s</span>
+                        <span class="stat-label">Duración Total</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="controls">
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="Buscar en resultados...">
+                </div>
+                <div class="export-buttons">
+                    <button id="exportCsv" class="btn-secondary">Exportar CSV</button>
+                    <button id="exportJson" class="btn-secondary">Exportar JSON</button>
+                </div>
+            </section>
+
+            <section class="table-container">
+                <table id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nombre</th>
+                            <th>Tipo</th>
+                            <th>Estado</th>
+                            <th>Fecha</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody">
+                        <tr class="empty-row">
+                            <td colspan="6">No hay resultados disponibles</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section class="pagination">
+                <button id="prevPage" class="btn-secondary" disabled>Anterior</button>
+                <span id="pageInfo">Página 1 de 1</span>
+                <button id="nextPage" class="btn-secondary" disabled>Siguiente</button>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/js/results.js"></script>
+</body>
+</html>

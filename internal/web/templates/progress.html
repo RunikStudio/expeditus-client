@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Progreso - Expeditus</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/progress.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Progreso del Scraping</h1>
+            <a href="/" class="back-link">← Volver al inicio</a>
+        </header>
+
+        <main>
+            <section class="session-info">
+                <div class="card">
+                    <p>Session ID: <strong id="sessionId">-</strong></p>
+                    <p>Estado: <span id="status" class="badge pending">Iniciando...</span></p>
+                </div>
+            </section>
+
+            <section class="overall-progress">
+                <h2>Progreso General</h2>
+                <div class="progress-bar-container">
+                    <div id="overallProgress" class="progress-bar" style="width: 0%"></div>
+                </div>
+                <p class="progress-text"><span id="progressPercent">0</span>% completado</p>
+            </section>
+
+            <section class="stages">
+                <h2>Etapas</h2>
+                
+                <div class="stage" id="stage-login">
+                    <div class="stage-header">
+                        <span class="stage-name">1. Login</span>
+                        <span class="stage-status" id="loginStatus">Pendiente</span>
+                    </div>
+                    <div class="progress-bar-container small">
+                        <div id="loginProgress" class="progress-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="stage" id="stage-navigation">
+                    <div class="stage-header">
+                        <span class="stage-name">2. Navegación</span>
+                        <span class="stage-status" id="navStatus">Pendiente</span>
+                    </div>
+                    <div class="progress-bar-container small">
+                        <div id="navProgress" class="progress-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="stage" id="stage-scraping">
+                    <div class="stage-header">
+                        <span class="stage-name">3. Extracción de Datos</span>
+                        <span class="stage-status" id="scrapingStatus">Pendiente</span>
+                    </div>
+                    <div class="progress-bar-container small">
+                        <div id="scrapingProgress" class="progress-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <div class="stage" id="stage-processing">
+                    <div class="stage-header">
+                        <span class="stage-name">4. Procesamiento</span>
+                        <span class="stage-status" id="processStatus">Pendiente</span>
+                    </div>
+                    <div class="progress-bar-container small">
+                        <div id="processProgress" class="progress-bar" style="width: 0%"></div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="stats">
+                <div class="card stats-grid">
+                    <div class="stat">
+                        <span class="stat-value" id="itemsProcessed">0</span>
+                        <span class="stat-label">Elementos Procesados</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value" id="speed">0</span>
+                        <span class="stat-label">Elementos/seg</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value" id="eta">--:--</span>
+                        <span class="stat-label">Tiempo Restante</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="actions">
+                <button id="cancelBtn" class="btn-danger">Cancelar Proceso</button>
+                <button id="viewResultsBtn" class="btn-primary hidden">Ver Resultados</button>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/js/progress.js"></script>
+</body>
+</html>

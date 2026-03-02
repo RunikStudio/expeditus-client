@@ -1,0 +1,139 @@
+.session-info {
+    margin-bottom: 2rem;
+}
+
+.session-info .card {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.session-info p {
+    color: var(--gray-500);
+}
+
+.session-info strong {
+    color: var(--gray-900);
+}
+
+.overall-progress {
+    margin-bottom: 2rem;
+}
+
+.overall-progress h2 {
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+    color: var(--gray-700);
+}
+
+.progress-bar-container {
+    height: 1.5rem;
+    background: var(--gray-200);
+    border-radius: 9999px;
+    overflow: hidden;
+    box-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
+}
+
+.progress-bar-container.small {
+    height: 0.5rem;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), #3b82f6);
+    border-radius: 9999px;
+    transition: width 0.3s ease;
+}
+
+.progress-bar.complete {
+    background: linear-gradient(90deg, var(--success), #34d399);
+}
+
+.progress-text {
+    text-align: center;
+    margin-top: 0.5rem;
+    font-weight: 600;
+    color: var(--gray-700);
+}
+
+.stages {
+    margin-bottom: 2rem;
+}
+
+.stages h2 {
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+    color: var(--gray-700);
+}
+
+.stage {
+    background: var(--white);
+    padding: 1rem;
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+    box-shadow: var(--shadow);
+}
+
+.stage-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.stage-name {
+    font-weight: 600;
+    color: var(--gray-700);
+}
+
+.stage-status {
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.stage.active .stage-status {
+    color: var(--primary);
+}
+
+.stage.complete .stage-status {
+    color: var(--success);
+}
+
+.stage.failed .stage-status {
+    color: var(--danger);
+}
+
+.stats {
+    margin-bottom: 2rem;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1.5rem;
+}
+
+.stat {
+    text-align: center;
+}
+
+.stat-value {
+    display: block;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.stat-label {
+    display: block;
+    font-size: 0.875rem;
+    color: var(--gray-500);
+    margin-top: 0.25rem;
+}
+
+.actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}

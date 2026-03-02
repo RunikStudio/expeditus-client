@@ -21,10 +21,15 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
+	platform := DetectPlatform()
+	noSandbox := platform == "linux"
+
+	chromePath := AutoFindChromePath()
+
 	return Config{
-		ExecPath:      "/usr/bin/chromium",
+		ExecPath:      chromePath,
 		Headless:      true,
-		NoSandbox:     true,
+		NoSandbox:     noSandbox,
 		Timeout:       30 * time.Second,
 		WindowWidth:   1920,
 		WindowHeight:  1080,

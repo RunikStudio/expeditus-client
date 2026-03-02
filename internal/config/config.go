@@ -37,19 +37,24 @@ func LoadLoginConfig() (*LoginConfig, error) {
 	return cfg, nil
 }
 
-// loadEnvFile attempts to load the .env file from the project root.
-// It searches relative to this file's location to find the project root.
+// loadEnvFile attempts to load the .env file.
+// It first tries the current working directory (where the binary runs),
+// then falls back to the project root for development.
 func loadEnvFile() {
+	// Try current working directory first (production)
+	if err := godotenv.Load(".env"); err == nil {
+		return
+	}
+
+	// Try project root (development)
 	_, currentFile, _, ok := runtime.Caller(0)
 	if !ok {
 		return
 	}
 
-	// Navigate from internal/config/config.go to project root
 	projectRoot := filepath.Join(filepath.Dir(currentFile), "..", "..")
 	envPath := filepath.Join(projectRoot, ".env")
 
-	// Ignore errors - if .env doesn't exist, we'll use actual environment variables
 	_ = godotenv.Load(envPath)
 }
 

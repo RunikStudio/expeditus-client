@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expeditus - Cliente de Automatización</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Expeditus Client</h1>
+            <p class="subtitle">Sistema de Automatización para Delfos Tour</p>
+        </header>
+
+        <main>
+            <section class="hero">
+                <div class="icon">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                </div>
+                <h2>Bienvenido al Cliente de Automatización</h2>
+                <p>Inicie el proceso de scraping para extraer datos del sistema Delfos Tour.</p>
+            </section>
+
+            <section class="action">
+                <button id="startBtn" class="btn-primary">
+                    <span class="btn-icon">▶</span>
+                    Iniciar Scraping
+                </button>
+                <div id="status" class="status hidden"></div>
+            </section>
+
+            <section class="info">
+                <div class="card">
+                    <h3>Estados del Proceso</h3>
+                    <ul>
+                        <li><span class="badge pending">Pendiente</span> Esperando inicio</li>
+                        <li><span class="badge running">Ejecutando</span> Proceso activo</li>
+                        <li><span class="badge completed">Completado</span> Finalizado exitosamente</li>
+                        <li><span class="badge failed">Fallido</span> Error en el proceso</li>
+                    </ul>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 Expeditus Client</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
