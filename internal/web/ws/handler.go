@@ -119,7 +119,15 @@ func (h *Hub) UpdateProgress(sessionID string, progress *models.ProgressUpdate) 
 	session.mu.Unlock()
 
 	data, _ := json.Marshal(progress)
-	h.broadcast <- data
+	// Send only to clients with matching sessionID
+	for client := range h.clients {
+		if client.sessionID == sessionID {
+			select {
+			case client.send <- data:
+			default:
+			}
+		}
+	}
 }
 
 func (h *Hub) SendToSession(sessionID string, data []byte) {
@@ -193,17 +201,12 @@ func (c *Client) readPump() {
 	})
 
 	for {
-		_, message, err := c.conn.ReadMessage()
+		_, _, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("WebSocket error: %v", err)
 			}
 			break
-		}
-
-		var progress models.ProgressUpdate
-		if err := json.Unmarshal(message, &progress); err == nil {
-			globalHub.UpdateProgress(c.sessionID, &progress)
 		}
 	}
 }
@@ -224,21 +227,14 @@ func (c *Client) writePump() {
 				return
 			}
 
+			// Send each message separately with immediate flush
 			w, err := c.conn.NextWriter(websocket.TextMessage)
 			if err != nil {
+				log.Printf("WebSocket NextWriter error: %v", err)
 				return
 			}
 			w.Write(message)
-
-			n := len(c.send)
-			for i := 0; i < n; i++ {
-				w.Write([]byte{'\n'})
-				w.Write(<-c.send)
-			}
-
-			if err := w.Close(); err != nil {
-				return
-			}
+			w.Close()
 
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
@@ -256,6 +252,7 @@ func UpdateProgress(sessionID string, progress *models.ProgressUpdate) {
 func SendToSession(sessionID string, data interface{}) {
 	jsonData, err := json.Marshal(data)
 	if err != nil {
+		log.Printf("WebSocket JSON marshal error: %v", err)
 		return
 	}
 	globalHub.SendToSession(sessionID, jsonData)

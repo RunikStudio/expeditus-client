@@ -1,12 +1,19 @@
 package handlers
 
 import (
+	"log"
+	"math/rand"
 	"net/http"
+	"time"
 
 	"ExpeditusClient/internal/web/models"
 	"ExpeditusClient/internal/web/services"
 	"github.com/gin-gonic/gin"
 )
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
 
 var scraperService *services.ScraperService
 
@@ -28,13 +35,18 @@ func (h *ScrapingHandler) StartScraping(c *gin.Context) {
 		sessionID = generateSessionID()
 	}
 
+	log.Printf("StartScraping called with sessionID: %s", sessionID)
+
 	err := scraperService.StartSession(sessionID)
 	if err != nil {
+		log.Printf("StartSession error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error(),
 		})
 		return
 	}
+
+	log.Printf("Session %s started successfully", sessionID)
 
 	c.JSON(http.StatusAccepted, gin.H{
 		"sessionId": sessionID,
@@ -116,14 +128,14 @@ func (h *ScrapingHandler) CancelSession(c *gin.Context) {
 }
 
 func generateSessionID() string {
-	return "session-" + randomString(8)
+	return "session-" + randomString(12)
 }
 
 func randomString(n int) string {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, n)
 	for i := range b {
-		b[i] = letters[i%len(letters)]
+		b[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(b)
 }

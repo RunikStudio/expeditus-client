@@ -258,12 +258,22 @@ func (s *ScraperService) runScraping(session *ScraperSession, cfg *config.LoginC
 		return
 	}
 
+	log.Printf("Session %s completed navigation to search", session.ID)
+
+	time.Sleep(500 * time.Millisecond)
+
 	session.Progress.SetStage(models.StageScraping)
 	s.sendProgress(session, 70, models.StageScraping, "Extrayendo datos de hoteles...")
 
+	time.Sleep(500 * time.Millisecond)
+
 	hotelData := s.extractHotels(browserCtx, session)
 
+	time.Sleep(500 * time.Millisecond)
+
 	s.sendProgress(session, 90, models.StageProcessing, "Procesando resultados...")
+
+	time.Sleep(500 * time.Millisecond)
 
 	session.Results = append(session.Results, models.NewResult("hotel-1", hotelData))
 	session.Status = models.SessionStatusCompleted
@@ -281,50 +291,105 @@ func (s *ScraperService) extractHotels(ctx context.Context, session *ScraperSess
 			const cookies = document.cookie;
 			const url = window.location.href;
 			const allText = document.body.innerText;
+			const title = document.title;
 			
-			const firstTotalMatch = allText.match(/Total: US\$[\d,.]+/);
-			let finalPrice = null;
-			if (firstTotalMatch) {
-				const priceInLine = firstTotalMatch[0].match(/US\$[\d,.]+/);
-				finalPrice = priceInLine ? priceInLine[0] : null;
-			}
+			// Find hotel cards - look for common patterns
+			const cards = document.querySelectorAll('.hotel-card, .result-item, [class*="hotel"], .room-rate, [class*="card"]');
 			
-			const knownHotels = [
-				'Radisson Blu Aruba', 'Radisson Blu', 'Radisson',
-				'Hilton Aruba', 'Hilton',
-				'Marriott',
-				'Casa del Mar', 'Boardwalk',
-				'ECLIPSE', 'Divi Aruba', 'Divi',
-				'Renaissance Aruba', 'Embassy Suites'
-			];
+			const hotels = [];
+			const seen = new Set();
 			
-			let hotelName = null;
-			for (const hotel of knownHotels) {
-				if (allText.includes(hotel)) {
-					hotelName = hotel;
-					break;
+			// First try specific hotel card selectors
+			cards.forEach((card) => {
+				// Try to find hotel name
+				const nameEl = card.querySelector('h3, h4, h5, [class*="name"], [class*="title"], .hotel-name, .room-name');
+				const priceEl = card.querySelector('.price, .total, [class*="price"], [class*="total"], [class*="amount"]');
+				
+				if (nameEl) {
+					let name = nameEl.innerText.trim();
+					let price = priceEl ? priceEl.innerText.trim() : '';
+					
+					// Clean price - extract just the number
+					if (price) {
+						const priceMatch = price.match(/US?\$[\d,]+/);
+						if (priceMatch) {
+							price = priceMatch[0];
+						}
+					}
+					
+					// Skip generic entries
+					if (name && !name.startsWith('Hotel ') || price) {
+						const key = name + '|' + price;
+						if (!seen.has(key) && name.length > 2) {
+							seen.add(key);
+							hotels.push({ name, price: price || 'N/A' });
+						}
+					}
+				}
+			});
+			
+			// If we didn't find enough hotels, try extracting from text
+			if (hotels.length < 5) {
+				const knownHotels = [
+					'Central Boutique Hotel', 'Victoria City Hotel', 'Hyatt Place',
+					'Coconut Inn', 'Divi Village', 'Aruba Boutique', 'MVC Eagle Beach',
+					'Radisson Blu', 'Renaissance', 'Amsterdam Manor', 'Holiday Inn',
+					'Embassy Suites', 'Eagle Aruba', 'TRYP', 'Paradera Park',
+					'Privada Stays', 'RH Boutique', 'Aruba\'s Life'
+				];
+				
+				const priceRegex = /US?\$[\d,]+/g;
+				const allPrices = [...new Set(allText.match(priceRegex) || [])].slice(0, 20);
+				
+				knownHotels.forEach(hotel => {
+					if (allText.includes(hotel)) {
+						// Find the closest price after the hotel name
+						const hotelIndex = allText.indexOf(hotel);
+						const textAfter = allText.substring(hotelIndex, hotelIndex + 200);
+						const priceMatch = textAfter.match(/US?\$[\d,]+/);
+						const price = priceMatch ? priceMatch[0] : 'N/A';
+						
+						const key = hotel + '|' + price;
+						if (!seen.has(key)) {
+							seen.add(key);
+							hotels.push({ name: hotel, price });
+						}
+					}
+				});
+				
+				// Add any prices we found if we don't have hotels yet
+				if (hotels.length === 0) {
+					allPrices.forEach((price, i) => {
+						hotels.push({ name: 'Hotel ' + (i + 1), price });
+					});
 				}
 			}
 			
-			const allPriceMatches = allText.match(/US?\$[\d,.]+/g) || [];
-			const cleanPrices = [...new Set(allPriceMatches)].filter(p => p.length > 2 && p.length < 15);
+			// Sort by price
+			hotels.sort((a, b) => {
+				const aNum = parseFloat(a.price.replace(/[^\d]/g, '')) || 999999;
+				const bNum = parseFloat(b.price.replace(/[^\d]/g, '')) || 999999;
+				return aNum - bNum;
+			});
 			
 			return { 
 				cookies: cookies,
 				url: url,
-				name: hotelName || 'Not found', 
-				price: finalPrice || cleanPrices[0] || 'Not found'
+				title: title,
+				hotels: hotels.slice(0, 50), // Limit to 50
+				count: hotels.length
 			};
 		} catch(e) {
-			return { 
-				cookies: '',
-				name: 'Error: ' + e.message, 
-				price: 'N/A'
-			};
+			return { error: e.message, url: window.location.href };
 		}
 	})()`
 
-	chromedp.Run(ctx, chromedp.Evaluate(script, &result))
+	if err := chromedp.Run(ctx, chromedp.Evaluate(script, &result)); err != nil {
+		log.Printf("Session %s: extractHotels error: %v", session.ID, err)
+		return map[string]interface{}{"error": err.Error()}
+	}
+
+	log.Printf("Session %s: Extracted %d hotels", session.ID, result["count"])
 	return result
 }
 

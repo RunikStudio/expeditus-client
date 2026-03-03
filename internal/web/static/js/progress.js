@@ -54,7 +54,11 @@ function updateProgress(data) {
     progressPercentEl.textContent = Math.round(progress);
     
     const stage = data.stage || 'login';
-    updateStage(stage, progress);
+    
+    // Skip updateStage for "complete" stage - it will be handled by status check
+    if (stage !== 'complete' && stage !== 'done') {
+        updateStage(stage, progress);
+    }
     
     document.getElementById('itemsProcessed').textContent = data.processed || 0;
     document.getElementById('speed').textContent = data.speed || '0';
@@ -79,13 +83,27 @@ function updateProgress(data) {
 }
 
 function updateStage(stage, progress) {
+    const stageMap = {
+        'login': { stageId: 'stage-login', progressId: 'loginProgress', statusId: 'loginStatus' },
+        'navigation': { stageId: 'stage-navigation', progressId: 'navProgress', statusId: 'navStatus' },
+        'scraping': { stageId: 'stage-scraping', progressId: 'scrapingProgress', statusId: 'scrapingStatus' },
+        'processing': { stageId: 'stage-processing', progressId: 'processProgress', statusId: 'processStatus' }
+    };
+    
     const stages = ['login', 'navigation', 'scraping', 'processing'];
     const stageIndex = stages.indexOf(stage);
     
     stages.forEach((s, i) => {
-        const el = document.getElementById(`stage-${s}`);
-        const progressEl = document.getElementById(`${s}Progress`);
-        const statusEl = document.getElementById(`${s}Status`);
+        const map = stageMap[s];
+        if (!map) return;
+        
+        const el = document.getElementById(map.stageId);
+        const progressEl = document.getElementById(map.progressId);
+        const statusEl = document.getElementById(map.statusId);
+        
+        if (!el || !progressEl || !statusEl) {
+            return;
+        }
         
         if (i < stageIndex) {
             el.classList.add('complete');
@@ -136,16 +154,33 @@ setInterval(async () => {
         const data = await response.json();
         
         if (data.status === 'completed' || data.status === 'failed') {
-            if (!ws || ws.readyState !== WebSocket.OPEN) {
-                statusEl.textContent = data.status === 'completed' ? 'Completado' : 'Fallido';
-                statusEl.className = `badge ${data.status}`;
-                if (data.status === 'completed') {
-                    overallProgressEl.classList.add('complete');
-                    viewResultsBtn.classList.remove('hidden');
-                }
+            statusEl.textContent = data.status === 'completed' ? 'Completado' : 'Fallido';
+            statusEl.className = `badge ${data.status}`;
+            if (data.status === 'completed') {
+                overallProgressEl.style.width = '100%';
+                progressPercentEl.textContent = '100';
+                overallProgressEl.classList.add('complete');
+                viewResultsBtn.classList.remove('hidden');
+                
+                const stageMap = {
+                    'login': { stageId: 'stage-login', progressId: 'loginProgress', statusId: 'loginStatus' },
+                    'navigation': { stageId: 'stage-navigation', progressId: 'navProgress', statusId: 'navStatus' },
+                    'scraping': { stageId: 'stage-scraping', progressId: 'scrapingProgress', statusId: 'scrapingStatus' },
+                    'processing': { stageId: 'stage-processing', progressId: 'processProgress', statusId: 'processStatus' }
+                };
+                
+                Object.keys(stageMap).forEach(s => {
+                    const map = stageMap[s];
+                    const el = document.getElementById(map.stageId);
+                    const progressEl = document.getElementById(map.progressId);
+                    const statusEl = document.getElementById(map.statusId);
+                    if (el) el.classList.add('complete');
+                    if (progressEl) progressEl.style.width = '100%';
+                    if (statusEl) statusEl.textContent = 'Completado';
+                });
             }
         }
     } catch (error) {
         console.error('Error fetching status:', error);
     }
-}, 5000);
+}, 3000);
