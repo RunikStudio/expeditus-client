@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	searchURL      = "https://www.delfos.tur.ar/home?directSubmit=true&latestSearch=true&tripType=ONLY_HOTEL&&departureDate=09/05/2026&arrivalDate=23/05/2026&hotelDestination=Destination::AUA"
-	defaultTimeout = 60 * time.Second
+	searchURL          = "https://www.delfos.tur.ar/home?directSubmit=true&latestSearch=true&tripType=ONLY_HOTEL&&departureDate=09/05/2026&arrivalDate=23/05/2026&hotelDestination=Destination::AUA"
+	accommodationValue = "Central Boutique Hotel"
+	defaultTimeout     = 60 * time.Second
 )
 
 type ScraperService struct {
@@ -263,7 +264,90 @@ func (s *ScraperService) runScraping(session *ScraperSession, cfg *config.LoginC
 	time.Sleep(500 * time.Millisecond)
 
 	session.Progress.SetStage(models.StageScraping)
-	s.sendProgress(session, 70, models.StageScraping, "Extrayendo datos de hoteles...")
+	s.sendProgress(session, 75, models.StageScraping, "Buscando input de alojamiento...")
+
+	fillAccommodationScript := fmt.Sprintf(`(() => {
+		const inputs = document.querySelectorAll('input');
+		let accommodationInput = null;
+		
+		for (const input of inputs) {
+			const placeholder = (input.placeholder || '').toLowerCase();
+			const ariaLabel = (input.getAttribute('aria-label') || '').toLowerCase();
+			const name = (input.name || '').toLowerCase();
+			
+			if (placeholder.includes('nombre del alojamiento') || 
+				ariaLabel.includes('nombre del alojamiento') ||
+				name.includes('accommodation')) {
+				accommodationInput = input;
+				return 'Found input: ' + input.placeholder + ' | name: ' + input.name;
+			}
+		}
+		
+		for (const input of inputs) {
+			const placeholder = (input.placeholder || '').toLowerCase();
+			if (placeholder.includes('alojamiento') || placeholder.includes('hotel')) {
+				accommodationInput = input;
+				return 'Found partial match: ' + input.placeholder;
+			}
+		}
+		
+		return 'Input not found';
+	})()`)
+
+	var fillResult string
+	err = chromedp.Run(browserCtx,
+		chromedp.Evaluate(fillAccommodationScript, &fillResult),
+	)
+	if err != nil {
+		log.Printf("Session %s: Error searching accommodation input: %v", session.ID, err)
+	} else {
+		log.Printf("Session %s: Accommodation input search: [%s]", session.ID, fillResult)
+	}
+
+	fillValueScript := fmt.Sprintf(`(() => {
+		const inputs = document.querySelectorAll('input');
+		
+		for (const input of inputs) {
+			const placeholder = (input.placeholder || '').toLowerCase();
+			const ariaLabel = (input.getAttribute('aria-label') || '').toLowerCase();
+			const name = (input.name || '').toLowerCase();
+			
+			if (placeholder.includes('nombre del alojamiento') || 
+				ariaLabel.includes('nombre del alojamiento') ||
+				name.includes('accommodation') ||
+				placeholder.includes('alojamiento')) {
+				
+				const value = '%s';
+				input.value = '';
+				
+				for (let i = 0; i < value.length; i++) {
+					input.value += value[i];
+					input.dispatchEvent(new Event('input', { bubbles: true }));
+					input.dispatchEvent(new Event('keyup', { bubbles: true }));
+				}
+				
+				input.dispatchEvent(new Event('input', { bubbles: true }));
+				input.dispatchEvent(new Event('change', { bubbles: true }));
+				input.dispatchEvent(new Event('blur', { bubbles: true }));
+				
+				return 'TYPED: ' + input.value;
+			}
+		}
+		
+		return 'NOT_FOUND';
+	})()`, accommodationValue)
+
+	var fillValueResult string
+	err = chromedp.Run(browserCtx,
+		chromedp.Evaluate(fillValueScript, &fillValueResult),
+	)
+	if err != nil {
+		log.Printf("Session %s: Error filling: %v", session.ID, err)
+	}
+
+	log.Printf("Session %s: Fill result: [%s]", session.ID, fillValueResult)
+
+	time.Sleep(5 * time.Second)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -290,77 +374,86 @@ func (s *ScraperService) extractHotels(ctx context.Context, session *ScraperSess
 		try {
 			const cookies = document.cookie;
 			const url = window.location.href;
-			const allText = document.body.innerText;
 			const title = document.title;
-			
-			// Find hotel cards - look for common patterns
-			const cards = document.querySelectorAll('.hotel-card, .result-item, [class*="hotel"], .room-rate, [class*="card"]');
 			
 			const hotels = [];
 			const seen = new Set();
 			
-			// First try specific hotel card selectors
-			cards.forEach((card) => {
-				// Try to find hotel name
-				const nameEl = card.querySelector('h3, h4, h5, [class*="name"], [class*="title"], .hotel-name, .room-name');
-				const priceEl = card.querySelector('.price, .total, [class*="price"], [class*="total"], [class*="amount"]');
+			const hotelElements = document.querySelectorAll('[id^="mainForm:datascrollHorizontal:"][id$=":hotelextended:otherOption"]');
+			
+			console.log('Found hotel elements: ' + hotelElements.length);
+			
+			hotelElements.forEach((el) => {
+				const innerText = el.innerText || '';
 				
-				if (nameEl) {
-					let name = nameEl.innerText.trim();
-					let price = priceEl ? priceEl.innerText.trim() : '';
-					
-					// Clean price - extract just the number
-					if (price) {
-						const priceMatch = price.match(/US?\$[\d,]+/);
-						if (priceMatch) {
-							price = priceMatch[0];
-						}
+				const lines = innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+				let name = '';
+				
+				for (const line of lines) {
+					const lower = line.toLowerCase();
+					if (lower.includes('ver alojamiento') || lower.includes('seleccionar') || 
+						lower.includes('mostrar en el mapa') || lower.includes('ver opciones') ||
+						lower.includes('solo habitación') || lower.includes('cancelacion') ||
+						lower.includes('expedia') || lower.includes('delfos') ||
+						lower.includes('precio') || lower.includes('total') ||
+						/^\d+/.test(line) || /^\$/.test(line) || /US\$/.test(line)) {
+						continue;
 					}
-					
-					// Skip generic entries
-					if (name && !name.startsWith('Hotel ') || price) {
-						const key = name + '|' + price;
-						if (!seen.has(key) && name.length > 2) {
-							seen.add(key);
-							hotels.push({ name, price: price || 'N/A' });
+					if (lower.includes('hotel') || lower.includes('aruba') || lower.includes('inn') || 
+						lower.includes('resort') || lower.includes('village') || lower.includes('boutique') ||
+						lower.includes('place') || lower.includes('manor') || lower.includes('beach') ||
+						lower.includes('park')) {
+						name = line;
+						break;
+					}
+				}
+				
+				if (!name && lines.length > 0) {
+					for (const line of lines) {
+						const lower = line.toLowerCase();
+						if (!lower.includes('ver') && !lower.includes('seleccionar') && line.length > 3) {
+							name = line;
+							break;
 						}
 					}
 				}
+				
+				let price = 'N/A';
+				const priceMatch = innerText.match(/(?:Total:|Precio total|US\$)\s*([\d,]+)/i);
+				if (priceMatch) {
+					price = 'US$' + priceMatch[1];
+				} else {
+					const usdMatch = innerText.match(/US\$[\d,]+/);
+					if (usdMatch) {
+						price = usdMatch[0];
+					}
+				}
+				
+				if (name) {
+					name = name.replace(/[<>]/g, '').trim();
+				}
+				
+				if (name && name.length > 2 && !seen.has(name)) {
+					seen.add(name);
+					hotels.push({ name, price });
+				}
 			});
 			
-			// If we didn't find enough hotels, try extracting from text
-			if (hotels.length < 5) {
-				const knownHotels = [
-					'Central Boutique Hotel', 'Victoria City Hotel', 'Hyatt Place',
-					'Coconut Inn', 'Divi Village', 'Aruba Boutique', 'MVC Eagle Beach',
-					'Radisson Blu', 'Renaissance', 'Amsterdam Manor', 'Holiday Inn',
-					'Embassy Suites', 'Eagle Aruba', 'TRYP', 'Paradera Park',
-					'Privada Stays', 'RH Boutique', 'Aruba\'s Life'
-				];
-				
-				const priceRegex = /US?\$[\d,]+/g;
-				const allPrices = [...new Set(allText.match(priceRegex) || [])].slice(0, 20);
-				
-				knownHotels.forEach(hotel => {
-					if (allText.includes(hotel)) {
-						// Find the closest price after the hotel name
-						const hotelIndex = allText.indexOf(hotel);
-						const textAfter = allText.substring(hotelIndex, hotelIndex + 200);
-						const priceMatch = textAfter.match(/US?\$[\d,]+/);
-						const price = priceMatch ? priceMatch[0] : 'N/A';
-						
-						const key = hotel + '|' + price;
-						if (!seen.has(key)) {
-							seen.add(key);
-							hotels.push({ name: hotel, price });
+			console.log('Extracted hotels: ' + hotels.length);
+			
+			if (hotels.length === 0) {
+				const allText = document.body.innerText;
+				const hotelPrices = allText.match(/([A-Z][A-Za-z\s&'-]+(?:Hotel|Inn|Resort|Village|Boutique|Place|Manor|Beach|Park)[A-Za-z\s&'-]*)\s*(?:Total:|US\$|Precio)[\s:]*(\$?[\d,]+)/gi);
+				if (hotelPrices) {
+					hotelPrices.forEach(m => {
+						const parts = m.match(/([A-Z].+?)\s*(?:Total:|US\$|Precio)[\s:]*/i);
+						if (parts && parts[1]) {
+							const name = parts[1].trim();
+							if (!seen.has(name)) {
+								seen.add(name);
+								hotels.push({ name, price: 'N/A' });
+							}
 						}
-					}
-				});
-				
-				// Add any prices we found if we don't have hotels yet
-				if (hotels.length === 0) {
-					allPrices.forEach((price, i) => {
-						hotels.push({ name: 'Hotel ' + (i + 1), price });
 					});
 				}
 			}
@@ -376,7 +469,7 @@ func (s *ScraperService) extractHotels(ctx context.Context, session *ScraperSess
 				cookies: cookies,
 				url: url,
 				title: title,
-				hotels: hotels.slice(0, 50), // Limit to 50
+				hotels: hotels.slice(0, 5),
 				count: hotels.length
 			};
 		} catch(e) {
