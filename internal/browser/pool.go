@@ -70,6 +70,19 @@ func (p *Pool) NewContext(parent context.Context) (context.Context, context.Canc
 	return ctx, cancel
 }
 
+func (p *Pool) NewContextForWindow(parent context.Context, windowID string) (context.Context, context.CancelFunc) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	ctx, cancel := chromedp.NewContext(p.allocCtx)
+
+	if p.config.Timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, p.config.Timeout)
+	}
+
+	return ctx, cancel
+}
+
 func (p *Pool) Close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()

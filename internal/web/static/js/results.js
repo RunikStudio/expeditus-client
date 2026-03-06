@@ -50,26 +50,27 @@ function renderTable() {
     if (pageResults.length === 0) {
         resultsBody.innerHTML = `
             <tr class="empty-row">
-                <td colspan="6">${filteredResults.length === 0 ? 'No hay resultados disponibles' : 'No hay resultados que coincidan con la búsqueda'}</td>
+                <td colspan="7">${filteredResults.length === 0 ? 'No hay resultados disponibles' : 'No hay resultados que coincidan con la búsqueda'}</td>
             </tr>
         `;
     } else {
-        resultsBody.innerHTML = pageResults.map(result => `
+        resultsBody.innerHTML = pageResults.map(result => {
+            const maxPrice = result.data?.maxPrice || '-';
+            const foundPrice = result.data?.room?.mealPlan?.price || '-';
+            const foundCurrency = result.data?.room?.mealPlan?.currency || '$';
+            return `
             <tr>
                 <td>${result.id || '-'}</td>
-                <td>${result.data?.nombre || result.data?.name || '-'}</td>
-                <td>${result.data?.tipo || result.data?.type || '-'}</td>
-                <td>
-                    <span class="badge ${result.error ? 'failed' : 'completed'}">
-                        ${result.error ? 'Error' : 'OK'}
-                    </span>
-                </td>
+                <td>${result.data?.hotelName || '-'}</td>
+                <td>${result.data?.room?.roomName || '-'}</td>
+                <td style="color: red; font-weight: bold;">${maxPrice}</td>
+                <td style="color: green; font-weight: bold;">${foundCurrency}${foundPrice}</td>
                 <td>${new Date(result.timestamp).toLocaleString()}</td>
                 <td>
                     <button class="action-btn" onclick="viewDetail('${result.id}')">Ver</button>
                 </td>
             </tr>
-        `).join('');
+        `}).join('');
     }
     
     updatePagination();
@@ -121,12 +122,14 @@ exportCsvBtn.addEventListener('click', () => {
         return;
     }
     
-    const headers = ['ID', 'Nombre', 'Tipo', 'Estado', 'Fecha'];
+    const headers = ['ID', 'Nombre', 'Tipo', 'Precio Máximo', 'Moneda', 'Precio Encontrado', 'Fecha'];
     const rows = filteredResults.map(r => [
-        r.id,
-        r.data?.nombre || r.data?.name || '',
-        r.data?.tipo || r.data?.type || '',
-        r.error ? 'Error' : 'OK',
+        r.id || '',
+        r.data?.hotelName || '',
+        r.data?.room?.roomName || '',
+        r.data?.maxPrice || '',
+        r.data?.room?.mealPlan?.currency || '',
+        r.data?.room?.mealPlan?.price || '',
         new Date(r.timestamp).toISOString()
     ]);
     

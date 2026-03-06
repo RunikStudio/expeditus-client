@@ -17,9 +17,14 @@ import (
 )
 
 const (
+	hotelUrl           = "https://www.delfos.tur.ar/accommodation/79731/available/1?tripId=3"
 	searchURL          = "https://www.delfos.tur.ar/home?directSubmit=true&latestSearch=true&tripType=ONLY_HOTEL&&departureDate=09/05/2026&arrivalDate=23/05/2026&hotelDestination=Destination::AUA"
-	accommodationValue = "Central Boutique Hotel"
-	defaultTimeout     = 60 * time.Second
+	accommodationValue = "Barcelo Aruba (id: 79731)"
+	roomType           = "Habitación Deluxe (vista al mar)"
+	roomMealPlan       = "TODO INCLUIDO"
+	roomPriceMax       = 10000
+	roomPrice          = ""
+	defaultTimeout     = 120 * time.Second
 )
 
 type ScraperService struct {
@@ -261,6 +266,19 @@ func (s *ScraperService) runScraping(session *ScraperSession, cfg *config.LoginC
 
 	log.Printf("Session %s completed navigation to search", session.ID)
 
+	log.Printf("Session %s: Waiting for 'Búsqueda completada'...", session.ID)
+	var searchComplete bool
+	for i := 0; i < 30; i++ {
+		err = chromedp.Run(browserCtx,
+			chromedp.Evaluate(`document.body.innerText.includes('Búsqueda completada')`, &searchComplete),
+		)
+		if err == nil && searchComplete {
+			log.Printf("Session %s: Búsqueda completada found!", session.ID)
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+
 	time.Sleep(500 * time.Millisecond)
 
 	session.Progress.SetStage(models.StageScraping)
@@ -307,6 +325,11 @@ func (s *ScraperService) runScraping(session *ScraperSession, cfg *config.LoginC
 	fillValueScript := fmt.Sprintf(`(() => {
 		const inputs = document.querySelectorAll('input');
 		
+		const fullValue = '%s';
+		const idMatch = fullValue.match(/\(id:\s*(\d+)\)/);
+		const hotelId = idMatch ? idMatch[1] : null;
+		const searchName = fullValue.replace(/\s*\(id:\s*\d+\)/, '').trim();
+		
 		for (const input of inputs) {
 			const placeholder = (input.placeholder || '').toLowerCase();
 			const ariaLabel = (input.getAttribute('aria-label') || '').toLowerCase();
@@ -317,11 +340,10 @@ func (s *ScraperService) runScraping(session *ScraperSession, cfg *config.LoginC
 				name.includes('accommodation') ||
 				placeholder.includes('alojamiento')) {
 				
-				const value = '%s';
 				input.value = '';
 				
-				for (let i = 0; i < value.length; i++) {
-					input.value += value[i];
+				for (let i = 0; i < searchName.length; i++) {
+					input.value += searchName[i];
 					input.dispatchEvent(new Event('input', { bubbles: true }));
 					input.dispatchEvent(new Event('keyup', { bubbles: true }));
 				}
@@ -330,7 +352,35 @@ func (s *ScraperService) runScraping(session *ScraperSession, cfg *config.LoginC
 				input.dispatchEvent(new Event('change', { bubbles: true }));
 				input.dispatchEvent(new Event('blur', { bubbles: true }));
 				
-				return 'TYPED: ' + input.value;
+				setTimeout(() => {
+					let attempts = 0;
+					while (attempts < 10) {
+						const loader = document.querySelector('[class*="loader"], [class*="loading"], [class*="spinner"]');
+						if (!loader || loader.offsetParent === null) break;
+						attempts++;
+					}
+					
+					if (hotelId) {
+						const hotelElements = document.querySelectorAll('[id*="datascrollHorizontal"][id*=":hotelextended"]');
+						for (const el of hotelElements) {
+							const elId = el.id || '';
+							if (elId.includes(':' + hotelId + ':') || elId.endsWith(':' + hotelId)) {
+								const links = el.querySelectorAll('a, button');
+								for (const link of links) {
+									const linkText = (link.textContent || '').toLowerCase();
+									if (linkText.includes('ver opciones') || linkText.includes('ver hotel')) {
+										const url = link.href || link.getAttribute('data-url') || link.getAttribute('onclick');
+										return 'URL_FOUND: ' + url;
+									}
+								}
+							}
+						}
+					}
+					
+					return 'NO URL FOUND';
+				}, 3000);
+				
+				return 'TYPED: ' + searchName + ' | ID: ' + hotelId;
 			}
 		}
 		
@@ -349,9 +399,178 @@ func (s *ScraperService) runScraping(session *ScraperSession, cfg *config.LoginC
 
 	time.Sleep(5 * time.Second)
 
-	time.Sleep(500 * time.Millisecond)
+	var clickResult string
+	clickHotelScript := fmt.Sprintf(`(() => {
+		const fullValue = '%s';
+		const match = fullValue.match(/\(id:\s*(\d+)\)/);
+		const hotelId = match ? match[1] : null;
+		
+		if (!hotelId) return 'NO_ID: ' + fullValue;
+		
+		const allLinks = document.querySelectorAll('a[href*="/' + hotelId + '/"]');
+		for (const link of allLinks) {
+			const linkText = (link.textContent || '').toLowerCase().trim();
+			const href = link.href;
+			if (href && href.includes('/' + hotelId + '/') && (linkText.includes('ver opciones') || linkText.includes('ver hotel'))) {
+				window.location.href = href;
+				return 'NAVIGATING: ' + href;
+			}
+		}
+		
+		const openHotelLinks = document.querySelectorAll('[id*="openHotel"]');
+		for (const link of openHotelLinks) {
+			const href = link.href || '';
+			if (href.includes('/' + hotelId + '/')) {
+				const linkText = (link.textContent || '').toLowerCase().trim();
+				window.location.href = href;
+				return 'NAVIGATING (openHotel): ' + href;
+			}
+		}
+		
+		const debugLinks = Array.from(allLinks).map(l => l.href).join(', ');
+		return 'NOT_FOUND - hotelId: ' + hotelId + ' | links found: ' + debugLinks;
+	})()`, accommodationValue)
 
-	hotelData := s.extractHotels(browserCtx, session)
+	err = chromedp.Run(browserCtx,
+		chromedp.Evaluate(clickHotelScript, &clickResult),
+	)
+	if err != nil {
+		log.Printf("Session %s: Error clicking hotel: %v", session.ID, err)
+	}
+
+	log.Printf("Session %s: Click result: [%s]", session.ID, clickResult)
+
+	log.Printf("Session %s: Waiting for rooms to load...", session.ID)
+	var roomsLoaded map[string]interface{}
+	for i := 0; i < 30; i++ {
+		err = chromedp.Run(browserCtx,
+			chromedp.Evaluate(`(() => {
+				const text = document.body.innerText;
+				const loading = text.includes('Estamos buscando los mejores precios');
+				const ready = text.includes('Opciones de reserva');
+				return { loading, ready };
+			})()`, &roomsLoaded),
+		)
+		if err == nil && roomsLoaded != nil {
+			if ready, ok := roomsLoaded["ready"].(bool); ok && ready {
+				log.Printf("Session %s: Rooms loaded!", session.ID)
+				break
+			}
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	var hotelPageCheck string
+	checkHotelScript := fmt.Sprintf(`(() => {
+		const expectedName = '%s'.replace(/\\s*\\(id:\\s*\\d+\\)/, '').trim().toLowerCase();
+		
+		const url = window.location.href;
+		const bodyText = document.body.innerText;
+		
+		const enResultados = bodyText.includes('Búsqueda completada');
+		
+		const nameEl = document.querySelector('.dev-hotel-title-name') || 
+		               document.querySelector('.c-extended__title') ||
+		               document.querySelector('.hotel-name.dev-hotel-title') ||
+		               document.querySelector('[class*="hotel-title"]');
+		
+		let foundName = '';
+		if (nameEl) {
+			foundName = nameEl.innerText.trim().toLowerCase();
+		}
+		
+		if (!foundName) {
+			const hotelIdEl = document.getElementById('openHotel2');
+			if (hotelIdEl) {
+				foundName = hotelIdEl.innerText.trim().toLowerCase();
+			}
+		}
+		
+		const opcionesReserva = bodyText.includes('Opciones de reserva');
+		
+		if (enResultados) {
+			return 'STILL IN RESULTS - searching for hotel: ' + foundName;
+		}
+		
+		if (foundName.includes(expectedName) || expectedName.includes(foundName)) {
+			return 'URL: ' + url + ' | HOTEL: ' + foundName + ' | Opciones: ' + opcionesReserva;
+		}
+		
+		return 'UNKNOWN PAGE - url: ' + url;
+	})()`, accommodationValue)
+
+	err = chromedp.Run(browserCtx,
+		chromedp.Evaluate(checkHotelScript, &hotelPageCheck),
+	)
+	if err != nil {
+		log.Printf("Session %s: Error checking hotel: %v", session.ID, err)
+	}
+
+	log.Printf("Session %s: Hotel page check: [%s]", session.ID, hotelPageCheck)
+
+	time.Sleep(10 * time.Second)
+
+	var roomsButtonResult string
+	roomsButtonScript := `(() => {
+		const allIds = [];
+		document.querySelectorAll('[id]').forEach(el => {
+			const id = el.id;
+			if (id.toLowerCase().includes('accommodation') || 
+				id.toLowerCase().includes('section') ||
+				id.toLowerCase().includes('mobile') ||
+				id.toLowerCase().includes('habitacion')) {
+				allIds.push(id);
+			}
+		});
+		
+		const sectionPanel = document.getElementById('accommodationSectionPanel');
+		
+		if (sectionPanel) {
+			const buttons = sectionPanel.querySelectorAll('button, a');
+			for (const btn of buttons) {
+				const text = (btn.textContent || '').toLowerCase().trim();
+				if (text.includes('habitaciones')) {
+					btn.click();
+					return 'CLICKED: HABITACIONES (section panel)';
+				}
+			}
+		}
+		
+		const mobileNav = document.getElementById('accommodation-detail:c-mobile-navigation');
+		
+		if (mobileNav) {
+			const buttons = mobileNav.querySelectorAll('button, a');
+			for (const btn of buttons) {
+				const text = (btn.textContent || '').toLowerCase().trim();
+				if (text.includes('ver habitaciones')) {
+					btn.click();
+					return 'CLICKED: Ver habitaciones (mobile nav)';
+				}
+			}
+		}
+		
+		const allButtons = document.querySelectorAll('button, a');
+		for (const btn of allButtons) {
+			const text = (btn.textContent || '').toLowerCase().trim();
+			if (text.includes('habitaciones')) {
+				btn.click();
+				return 'CLICKED: Habitaciones (fallback)';
+			}
+		}
+		
+		return 'NO CLICK - IDs found: ' + JSON.stringify(allIds.slice(0, 10));
+	})()`
+
+	err = chromedp.Run(browserCtx,
+		chromedp.Evaluate(roomsButtonScript, &roomsButtonResult),
+	)
+	if err == nil {
+		log.Printf("Session %s: Rooms button: [%s]", session.ID, roomsButtonResult)
+	}
+
+	time.Sleep(5 * time.Second)
+
+	hotelData := s.extractCurrentHotel(browserCtx, session)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -366,6 +585,95 @@ func (s *ScraperService) runScraping(session *ScraperSession, cfg *config.LoginC
 
 	ws.SendToSession(session.ID, session.Progress)
 	log.Printf("Session %s completed successfully", session.ID)
+}
+
+func (s *ScraperService) extractCurrentHotel(ctx context.Context, session *ScraperSession) map[string]interface{} {
+	var result map[string]interface{}
+	script := `(() => {
+		const url = window.location.href;
+		const bodyText = document.body.innerText;
+		
+		const hotelEl = document.getElementById('hotel');
+		const nameEl = hotelEl ? hotelEl.querySelector('.hotel-name') : null;
+		const hotelName = nameEl ? nameEl.innerText.trim() : 'Not found';
+		
+		const bookOptionsDiv = document.getElementById('booking-options:bookOptions');
+		
+		const roomMap = {};
+		if (bookOptionsDiv) {
+			const combinations = bookOptionsDiv.querySelectorAll('.hotelCombinationPanel');
+			
+			combinations.forEach((el, i) => {
+				const roomNameEl = el.querySelector('.dev-room');
+				const roomName = roomNameEl ? roomNameEl.innerText.trim() : '';
+				
+				const mealPlanEl = el.querySelector('.dev-mealplan');
+				const mealPlan = mealPlanEl ? mealPlanEl.innerText.trim() : '';
+				
+				const priceEl = el.querySelector('.dev-combination-price') || el.querySelector('.dev-combination-row-details');
+				const priceText = priceEl ? priceEl.innerText.trim() : '';
+				
+				const currencyMatch = priceText.match(/US?\$/);
+				const currency = currencyMatch ? currencyMatch[0] : '$';
+				
+				const numericPriceMatch = priceText.replace(/[^0-9]/g, '');
+				const price = numericPriceMatch ? parseInt(numericPriceMatch, 10) : 0;
+				
+				const cancellationEl = el.querySelector('.freecancellation, .cancellation-policy');
+				const cancellation = cancellationEl ? cancellationEl.innerText.trim() : '';
+				
+				const cancellationSummaryEl = el.querySelector('[class*="cancellation"], .cancellation-summary, .freecancellation-text');
+				const cancellationSummary = cancellationSummaryEl ? cancellationSummaryEl.innerText.trim() : '';
+				
+				if (roomName && mealPlan) {
+					if (!roomMap[roomName]) {
+						roomMap[roomName] = { room: roomName, mealPlans: [] };
+					}
+					roomMap[roomName].mealPlans.push({
+						plan: mealPlan,
+						price: price,
+						currency: currency,
+						cancellation: cancellation,
+						cancellationSummary: cancellationSummary
+					});
+				}
+			});
+		}
+		
+		const rooms = Object.values(roomMap);
+		
+		const roomType = 'Habitación Deluxe (vista al mar)';
+		const roomMealPlan = 'TODO INCLUIDO';
+		
+		const filteredRooms = rooms.filter(r => {
+			const matchesRoomType = r.room.toLowerCase().includes(roomType.toLowerCase());
+			const matchesMealPlan = r.mealPlans.some(mp => 
+				mp.plan.toLowerCase().includes(roomMealPlan.toLowerCase())
+			);
+			return matchesRoomType && matchesMealPlan;
+		});
+		
+		const debug = {
+			url: url,
+			hotelName: hotelName,
+			roomCount: filteredRooms.length,
+			maxPrice: 10000,
+			room: filteredRooms.length > 0 ? {
+				roomName: filteredRooms[0].room,
+				mealPlan: filteredRooms[0].mealPlans[0]
+			} : null
+		};
+		
+		return debug;
+	})()`
+
+	if err := chromedp.Run(ctx, chromedp.Evaluate(script, &result)); err != nil {
+		log.Printf("Session %s: extractCurrentHotel error: %v", session.ID, err)
+		return map[string]interface{}{"error": err.Error()}
+	}
+
+	log.Printf("Session %s: Current hotel: %s, Rooms found: %v", session.ID, result["hotelName"], result["roomCount"])
+	return result
 }
 
 func (s *ScraperService) extractHotels(ctx context.Context, session *ScraperSession) map[string]interface{} {
