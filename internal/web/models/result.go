@@ -4,10 +4,11 @@ import "time"
 
 // Result represents a scraped data item
 type Result struct {
-	ID        string                 `json:"id"`
-	Data      map[string]interface{} `json:"data"`
-	Timestamp time.Time              `json:"timestamp"`
-	Error     string                 `json:"error,omitempty"`
+	ID         string                 `json:"id"`
+	Data       map[string]interface{} `json:"data"`
+	Screenshot string                 `json:"screenshot,omitempty"` // Base64 encoded screenshot
+	Timestamp  time.Time              `json:"timestamp"`
+	Error      string                 `json:"error,omitempty"`
 }
 
 // NewResult creates a new result

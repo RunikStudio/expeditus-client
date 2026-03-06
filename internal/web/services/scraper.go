@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/base64"
 	"flag"
 	"fmt"
 	"log"
@@ -578,7 +579,11 @@ func (s *ScraperService) runScraping(session *ScraperSession, cfg *config.LoginC
 
 	time.Sleep(500 * time.Millisecond)
 
-	session.Results = append(session.Results, models.NewResult("hotel-1", hotelData))
+	result := models.NewResult("hotel-1", hotelData)
+	if screenshot, ok := hotelData["screenshot"].(string); ok && screenshot != "" {
+		result.Screenshot = screenshot
+	}
+	session.Results = append(session.Results, result)
 	session.Status = models.SessionStatusCompleted
 	session.Progress.SetProgress(100)
 	session.Progress.SetStage(models.StageComplete)
@@ -673,6 +678,27 @@ func (s *ScraperService) extractCurrentHotel(ctx context.Context, session *Scrap
 	}
 
 	log.Printf("Session %s: Current hotel: %s, Rooms found: %v", session.ID, result["hotelName"], result["roomCount"])
+
+	if result["room"] != nil {
+		if roomData, ok := result["room"].(map[string]interface{}); ok {
+			if mealPlan, ok := roomData["mealPlan"].(map[string]interface{}); ok {
+				if price, ok := mealPlan["price"].(float64); ok {
+					maxPrice := 10000.0
+					if price < maxPrice {
+						log.Printf("Session %s: Found room with price %.2f < maxPrice %.2f - taking screenshot", session.ID, price, maxPrice)
+						var screenshot []byte
+						if err := chromedp.Run(ctx, chromedp.FullScreenshot(&screenshot, 100)); err == nil {
+							result["screenshot"] = base64.StdEncoding.EncodeToString(screenshot)
+							log.Printf("Session %s: Screenshot captured, size: %d bytes", session.ID, len(result["screenshot"].(string)))
+						} else {
+							log.Printf("Session %s: Failed to capture screenshot: %v", session.ID, err)
+						}
+					}
+				}
+			}
+		}
+	}
+
 	return result
 }
 

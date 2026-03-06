@@ -6,6 +6,9 @@ const resultsBody = document.getElementById('resultsBody');
 const prevPageBtn = document.getElementById('prevPage');
 const nextPageBtn = document.getElementById('nextPage');
 const pageInfo = document.getElementById('pageInfo');
+const screenshotModal = document.getElementById('screenshotModal');
+const screenshotImage = document.getElementById('screenshotImage');
+const closeModal = document.querySelector('.close-modal');
 
 let allResults = [];
 let filteredResults = [];
@@ -161,8 +164,27 @@ function downloadFile(content, filename, type) {
 function viewDetail(id) {
     const result = allResults.find(r => r.id === id);
     if (result) {
-        alert(JSON.stringify(result, null, 2));
+        if (result.screenshot) {
+            screenshotImage.src = 'data:image/png;base64,' + result.screenshot;
+            screenshotModal.style.display = 'block';
+        } else {
+            alert(JSON.stringify(result, null, 2));
+        }
     }
+}
+
+if (closeModal) {
+    closeModal.addEventListener('click', () => {
+        screenshotModal.style.display = 'none';
+    });
+}
+
+if (screenshotModal) {
+    screenshotModal.addEventListener('click', (e) => {
+        if (e.target === screenshotModal) {
+            screenshotModal.style.display = 'none';
+        }
+    });
 }
 
 function showError(message) {
