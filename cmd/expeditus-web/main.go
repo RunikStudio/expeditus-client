@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"ExpeditusClient/internal/browser"
+	delfosprov "ExpeditusClient/internal/scrapers/delfos"
+	"ExpeditusClient/internal/scrapers/tiptravel"
 	"ExpeditusClient/internal/web/handlers"
 	"ExpeditusClient/internal/web/ws"
 	"github.com/gin-gonic/gin"
@@ -52,6 +54,18 @@ func main() {
 	config := DefaultConfig()
 
 	gin.SetMode(gin.ReleaseMode)
+
+	// Register scraper providers BEFORE handlers.InitScraper() so the
+	// scrapers registry is populated when ScraperService dispatches.
+	// The delfos provider always registers; tiptravel registers even if
+	// the password is missing - it will return an error from the factory
+	// when an order actually targets tiptravel without a password set.
+	delfosprov.Register()
+	if err := tiptravel.Register(); err != nil {
+		log.Printf("Warning: tiptravel provider not registered: %v", err)
+	} else {
+		log.Println("Registered scraper providers: delfos, tiptravel")
+	}
 
 	if err := handlers.InitScraper(); err != nil {
 		log.Fatalf("Failed to initialize scraper: %v", err)
@@ -108,11 +122,19 @@ func setupRouter(config Config, scraper *handlers.ScrapingHandler) *gin.Engine {
 
 	api := router.Group("/api")
 	{
+		// Legacy endpoints
 		api.POST("/scrap/start", scraper.StartScraping)
 		api.GET("/scrap/status/:sessionId", scraper.GetStatus)
 		api.GET("/scrap/progress/:sessionId", scraper.GetProgress)
 		api.GET("/scrap/results/:sessionId", scraper.GetResults)
 		api.DELETE("/scrap/session/:sessionId", scraper.CancelSession)
+
+		// New endpoints for API integration
+		api.GET("/client/orders", scraper.GetOrders)                // Get pending orders from API
+		api.POST("/client/scrape/:jobId", scraper.StartScrapingJob)         // Start scraping a specific job
+	api.POST("/client/scrape/batch", scraper.StartBatchScraping) // Start multiple scrapes in parallel (max 4)
+		api.POST("/client/scrape/session/:sessionId/2fa", scraper.Submit2FACode) // Submit 2FA code provided by the user
+		api.GET("/client/scrape/session/:sessionId/2fa", scraper.Needs2FA)        // Poll whether the session is waiting for a 2FA code
 	}
 
 	router.GET("/ws", ws.HandleWebSocket)
@@ -131,6 +153,15 @@ func setupRouter(config Config, scraper *handlers.ScrapingHandler) *gin.Engine {
 
 	router.GET("/results", func(c *gin.Context) {
 		c.HTML(http.StatusOK, "results.html", nil)
+	})
+
+	// Debug endpoint to see all active sessions
+	router.GET("/debug/sessions", func(c *gin.Context) {
+		sessions := handlers.GetAllSessionsDebug()
+		c.JSON(http.StatusOK, gin.H{
+			"sessions": sessions,
+			"count":    len(sessions),
+		})
 	})
 
 	return router
