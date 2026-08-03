@@ -7,11 +7,12 @@ import (
 
 // Session status constants
 const (
-	SessionStatusPending   = "pending"
-	SessionStatusRunning   = "running"
-	SessionStatusCompleted = "completed"
-	SessionStatusFailed    = "failed"
-	SessionStatusCancelled = "cancelled"
+	SessionStatusPending    = "pending"
+	SessionStatusRunning    = "running"
+	SessionStatusWaiting2FA = "waiting_2fa"
+	SessionStatusCompleted  = "completed"
+	SessionStatusFailed     = "failed"
+	SessionStatusCancelled  = "cancelled"
 )
 
 // Session represents a scraping session

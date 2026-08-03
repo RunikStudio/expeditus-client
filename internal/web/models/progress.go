@@ -3,22 +3,30 @@ package models
 import "time"
 
 const (
-	StageLogin      = "login"
-	StageNavigation = "navigation"
-	StageScraping   = "scraping"
-	StageProcessing = "processing"
-	StageComplete   = "complete"
+	StageLogin       = "login"
+	StageTwoFA       = "2fa"
+	StageNavigation  = "navigation"
+	StageScraping    = "scraping"
+	StageProcessing  = "processing"
+	StageComplete    = "complete"
+	StageSearching   = "searching"
 )
 
 type ProgressUpdate struct {
-	SessionID  string    `json:"sessionId"`
-	Stage      string    `json:"stage"`
-	Progress   float64   `json:"progress"`
-	TotalItems int       `json:"totalItems"`
-	Processed  int       `json:"processed"`
-	Speed      string    `json:"speed"`
-	ETA        string    `json:"eta"`
-	Timestamp  time.Time `json:"timestamp"`
+	SessionID     string    `json:"sessionId"`
+	Stage         string    `json:"stage"`
+	Progress      float64   `json:"progress"`
+	TotalItems    int       `json:"totalItems"`
+	Processed     int       `json:"processed"`
+	Speed         string    `json:"speed"`
+	ETA           string    `json:"eta"`
+	Timestamp     time.Time `json:"timestamp"`
+	CurrentAction string    `json:"currentAction"`
+	CurrentHotel  string    `json:"currentHotel"`
+	ElapsedTime   string    `json:"elapsedTime"`
+	RoomsFound    int       `json:"roomsFound"`
+	PricesFound   int       `json:"pricesFound"`
+	Status        string    `json:"status"`
 }
 
 func NewProgressUpdate(sessionID string) *ProgressUpdate {
@@ -27,6 +35,7 @@ func NewProgressUpdate(sessionID string) *ProgressUpdate {
 		Stage:     StageLogin,
 		Progress:  0,
 		Timestamp: time.Now(),
+		Status:    "running",
 	}
 }
 
@@ -52,4 +61,28 @@ func (p *ProgressUpdate) SetSpeed(speed string) {
 
 func (p *ProgressUpdate) SetETA(eta string) {
 	p.ETA = eta
+}
+
+func (p *ProgressUpdate) SetCurrentAction(action string) {
+	p.CurrentAction = action
+}
+
+func (p *ProgressUpdate) SetCurrentHotel(hotel string) {
+	p.CurrentHotel = hotel
+}
+
+func (p *ProgressUpdate) SetElapsedTime(elapsed string) {
+	p.ElapsedTime = elapsed
+}
+
+func (p *ProgressUpdate) SetRoomsFound(rooms int) {
+	p.RoomsFound = rooms
+}
+
+func (p *ProgressUpdate) SetPricesFound(prices int) {
+	p.PricesFound = prices
+}
+
+func (p *ProgressUpdate) SetStatus(status string) {
+	p.Status = status
 }
