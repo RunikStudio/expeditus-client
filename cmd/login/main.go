@@ -44,7 +44,7 @@ func main() {
 	browserCfg.Timeout = defaultTimeout
 	browserCfg.Headless = !*debug
 
-	pool, err := browser.NewPool(ctx, browserCfg)
+	pool, err := browser.NewPool(ctx, browserCfg, 4)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating browser pool: %v\n", err)
 		os.Exit(1)

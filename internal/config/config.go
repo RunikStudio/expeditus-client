@@ -16,15 +16,21 @@ type LoginConfig struct {
 	Password  string
 }
 
+// APIConfig holds the Expeditus API configuration
+type APIConfig struct {
+	BaseURL   string
+	AccountID string
+}
+
 // LoadLoginConfig loads the login configuration from environment variables.
-// It looks for a .env file in the project root and falls back to actual environment variables.
+// Falls back to hardcoded defaults if not provided.
 func LoadLoginConfig() (*LoginConfig, error) {
 	loadEnvFile()
 
 	cfg := &LoginConfig{
 		TargetURL: getEnvOrDefault("DELFOS_URL", "https://www.delfos.tur.ar/"),
-		Username:  os.Getenv("DELFOS_USER"),
-		Password:  os.Getenv("DELFOS_PASSWORD"),
+		Username:  getEnvOrDefault("DELFOS_USER", "jpardo"),
+		Password:  getEnvOrDefault("DELFOS_PASSWORD", "Grupomas2025*"),
 	}
 
 	if cfg.Username == "" {
@@ -32,6 +38,22 @@ func LoadLoginConfig() (*LoginConfig, error) {
 	}
 	if cfg.Password == "" {
 		return nil, fmt.Errorf("DELFOS_PASSWORD environment variable is required")
+	}
+
+	return cfg, nil
+}
+
+// LoadAPIConfig loads the API configuration from environment variables.
+func LoadAPIConfig() (*APIConfig, error) {
+	loadEnvFile()
+
+	cfg := &APIConfig{
+		BaseURL:   getEnvOrDefault("EXPEDITUS_API_URL", "http://localhost:8083"),
+		AccountID: os.Getenv("EXPEDITUS_ACCOUNT_ID"), // Optional - if empty, gets all accounts
+	}
+
+	if cfg.BaseURL == "" {
+		return nil, fmt.Errorf("EXPEDITUS_API_URL environment variable is required")
 	}
 
 	return cfg, nil

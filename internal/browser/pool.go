@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/chromedp/chromedp"
@@ -28,7 +29,7 @@ func DefaultConfig() Config {
 
 	return Config{
 		ExecPath:      chromePath,
-		Headless:      true,
+		Headless:      false,
 		NoSandbox:     noSandbox,
 		Timeout:       30 * time.Second,
 		WindowWidth:   1920,
@@ -39,25 +40,38 @@ func DefaultConfig() Config {
 }
 
 type Pool struct {
-	mu       sync.RWMutex
-	allocCtx context.Context
-	cancel   context.CancelFunc
-	config   Config
+	mu           sync.RWMutex
+	allocCtx     context.Context
+	cancel       context.CancelFunc
+	config       Config
+	semaphore    chan struct{}  // Limits concurrent browsers to MaxBrowsers
+	activeCount  int32          // Current number of active browsers
+	MaxBrowsers int             // Maximum concurrent browsers (default 4)
 }
 
-func NewPool(ctx context.Context, cfg Config) (*Pool, error) {
+func NewPool(ctx context.Context, cfg Config, maxBrowsers int) (*Pool, error) {
 	opts := buildAllocatorOptions(cfg)
 
 	allocCtx, cancel := chromedp.NewExecAllocator(ctx, opts...)
+	
+	if maxBrowsers <= 0 {
+		maxBrowsers = 4 // Default max 4 browsers
+	}
 
 	return &Pool{
-		allocCtx: allocCtx,
-		cancel:   cancel,
-		config:   cfg,
+		allocCtx:    allocCtx,
+		cancel:     cancel,
+		config:     cfg,
+		semaphore:  make(chan struct{}, maxBrowsers),
+		MaxBrowsers: maxBrowsers,
 	}, nil
 }
 
 func (p *Pool) NewContext(parent context.Context) (context.Context, context.CancelFunc) {
+	// Acquire semaphore (blocks if max browsers reached)
+	p.semaphore <- struct{}{}
+	atomic.AddInt32(&p.activeCount, 1)
+	
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -67,7 +81,23 @@ func (p *Pool) NewContext(parent context.Context) (context.Context, context.Canc
 		ctx, cancel = context.WithTimeout(ctx, p.config.Timeout)
 	}
 
+	// Create a custom cancel that also releases semaphore
+	originalCancel := cancel
+	cancel = func() {
+		originalCancel()
+		<-p.semaphore
+		atomic.AddInt32(&p.activeCount, -1)
+	}
+
 	return ctx, cancel
+}
+
+func (p *Pool) ActiveBrowsers() int32 {
+	return atomic.LoadInt32(&p.activeCount)
+}
+
+func (p *Pool) AvailableSlots() int {
+	return p.MaxBrowsers - int(atomic.LoadInt32(&p.activeCount))
 }
 
 func (p *Pool) NewContextForWindow(parent context.Context, windowID string) (context.Context, context.CancelFunc) {

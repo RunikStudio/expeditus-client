@@ -39,7 +39,7 @@ func main() {
 	cfg.Timeout = time.Duration(*timeoutFlag) * time.Second
 
 	ctx := context.Background()
-	pool, err := browser.NewPool(ctx, cfg)
+	pool, err := browser.NewPool(ctx, cfg, 4)
 	if err != nil {
 		fail(fmt.Sprintf("browser pool error: %v", err))
 	}
