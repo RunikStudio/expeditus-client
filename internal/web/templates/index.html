@@ -3,47 +3,204 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Expeditus - Cliente de Automatización</title>
-    <link rel="stylesheet" href="/static/css/main.css">
+    <title>Expeditus - Automatización de Scraping (Delfos + TipTravel)</title>
+    <link rel="stylesheet" href="/static/css/main.css?v=3">
+    <style>
+        .orders-section {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .orders-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .orders-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .order-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .order-item:nth-child(even) {
+            background: #fafafa;
+        }
+        .order-item input[type="checkbox"] {
+            margin-right: 10px;
+        }
+        .order-info {
+            flex: 1;
+        }
+        .order-hotel {
+            font-weight: bold;
+            color: #333;
+        }
+        .order-details {
+            font-size: 12px;
+            color: #666;
+        }
+        .order-price {
+            font-weight: bold;
+            color: #333;
+        }
+        .order-price.expensive {
+            color: #333;
+        }
+        .provider-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+        .provider-badge.delfos {
+            background: #e3f2fd;
+            color: #1565c0;
+            border: 1px solid #bbdefb;
+        }
+        .provider-badge.tiptravel {
+            background: #f3e5f5;
+            color: #7b1fa2;
+            border: 1px solid #e1bee7;
+        }
+        .select-actions {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .job-counter {
+            font-size: 14px;
+            color: #666;
+        }
+        .login-status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .login-status.logged-in {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .login-status.not-logged-in {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+        }
+        .twofa-section {
+            background: #e7f3ff;
+            border: 2px solid #2196F3;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+        }
+        .twofa-section.active {
+            display: block;
+        }
+        .twofa-section h2 {
+            margin-top: 0;
+            color: #0d47a1;
+        }
+        .twofa-section input {
+            font-size: 24px;
+            letter-spacing: 6px;
+            text-align: center;
+            padding: 12px;
+            width: 220px;
+            border: 2px solid #2196F3;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        .twofa-section input:focus {
+            outline: none;
+            border-color: #0d47a1;
+            box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.3);
+        }
+        .twofa-section .btn-primary {
+            font-size: 16px;
+            padding: 12px 24px;
+        }
+        .twofa-help {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #555;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>Expeditus Client</h1>
-            <p class="subtitle">Sistema de Automatización para Delfos Tour</p>
+            <p class="subtitle">Scraping Multi-Proveedor — Delfos · TipTravel</p>
         </header>
 
         <main>
-            <section class="hero">
-                <div class="icon">
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polyline points="12 6 12 12 16 14"></polyline>
-                    </svg>
+            <section class="orders-section">
+                <div class="orders-header">
+                    <h2>Órdenes Disponibles</h2>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <select id="providerFilter" class="form-select">
+                            <option value="">Todos los proveedores</option>
+                            <option value="delfos">Delfos</option>
+                            <option value="tiptravel">TipTravel</option>
+                        </select>
+                        <button id="refreshOrdersBtn" class="btn-secondary">🔄 Actualizar</button>
+                    </div>
                 </div>
-                <h2>Bienvenido al Cliente de Automatización</h2>
-                <p>Inicie el proceso de scraping para extraer datos del sistema Delfos Tour.</p>
+                <div id="ordersInfo" class="job-counter">Cargando órdenes...</div>
+                <div id="ordersList" class="orders-list">
+                    <div style="padding: 20px; text-align: center; color: #999;">
+                        Haga clic en "Actualizar" para cargar las órdenes disponibles
+                    </div>
+                </div>
+                <div class="select-actions">
+                    <button id="selectAllBtn" class="btn-secondary">Seleccionar Todos</button>
+                    <button id="deselectAllBtn" class="btn-secondary">Deseleccionar Todos</button>
+                    <select id="maxJobsSelect" class="form-select">
+                        <option value="1">1 job</option>
+                        <option value="3">3 jobs</option>
+                        <option value="5">5 jobs</option>
+                        <option value="10">10 jobs</option>
+                        <option value="20">20 jobs</option>
+                        <option value="0" selected>Todos</option>
+                    </select>
+                    <span id="selectedCount" class="job-counter">0 seleccionados</span>
+                </div>
             </section>
 
             <section class="action">
-                <button id="startBtn" class="btn-primary">
+                <button id="startBtn" class="btn-primary" disabled>
                     <span class="btn-icon">▶</span>
-                    Iniciar Scraping
+                    Iniciar Scraping (<span id="jobsToRun">0</span> jobs)
                 </button>
                 <div id="status" class="status hidden"></div>
             </section>
 
-            <section class="info">
-                <div class="card">
-                    <h3>Estados del Proceso</h3>
-                    <ul>
-                        <li><span class="badge pending">Pendiente</span> Esperando inicio</li>
-                        <li><span class="badge running">Ejecutando</span> Proceso activo</li>
-                        <li><span class="badge completed">Completado</span> Finalizado exitosamente</li>
-                        <li><span class="badge failed">Fallido</span> Error en el proceso</li>
-                    </ul>
+            <section id="twofaSection" class="twofa-section">
+                <h2>🔐 Código de verificación (2FA)</h2>
+                <p id="twofaMessage">El sitio requiere un código de verificación. Ingresa el código que recibiste por email.</p>
+                <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <input type="text" id="twofaInput" maxlength="10" autocomplete="one-time-code" placeholder="Código" inputmode="numeric" pattern="[0-9]*">
+                    <button id="twofaSubmitBtn" class="btn-primary">Enviar código</button>
                 </div>
+                <p class="twofa-help">El bot continuará automáticamente después de enviar el código.</p>
             </section>
+
+
         </main>
 
         <footer>
@@ -51,6 +208,335 @@
         </footer>
     </div>
 
-    <script src="/static/js/main.js"></script>
+    <script>
+        let orders = [];
+        let selectedOrders = [];
+        let isLoggedIn = false;
+        let active2FASessions = new Map();
+
+        // Format price: input comes in cents (e.g. 23000 = $230.00)
+        function formatPrice(cents) {
+            const value = (cents || 0) / 100;
+            return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        // Load orders on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadOrders();
+        });
+
+        document.getElementById('refreshOrdersBtn').addEventListener('click', loadOrders);
+        document.getElementById('providerFilter').addEventListener('change', loadOrders);
+        document.getElementById('selectAllBtn').addEventListener('click', selectAll);
+        document.getElementById('deselectAllBtn').addEventListener('click', deselectAll);
+        document.getElementById('maxJobsSelect').addEventListener('change', updateSelection);
+        document.getElementById('startBtn').addEventListener('click', startScraping);
+        document.getElementById('twofaSubmitBtn').addEventListener('click', submit2FACode);
+        document.getElementById('twofaInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submit2FACode();
+            }
+        });
+
+        async function loadOrders() {
+            const ordersList = document.getElementById('ordersList');
+            const ordersInfo = document.getElementById('ordersInfo');
+            
+            ordersList.innerHTML = '<div style="padding: 20px; text-align: center;">Cargando...</div>';
+
+            try {
+                const provider = document.getElementById('providerFilter').value;
+                const url = provider ? `/api/client/orders?provider=${encodeURIComponent(provider)}` : '/api/client/orders';
+                const response = await fetch(url);
+                const data = await response.json();
+
+                orders = data.orders || [];
+                ordersInfo.textContent = `Total de órdenes disponibles: ${orders.length}`;
+
+                if (orders.length === 0) {
+                    ordersList.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">No hay órdenes disponibles</div>';
+                    return;
+                }
+
+                renderOrders();
+                updateSelection();
+            } catch (error) {
+                ordersList.innerHTML = `<div style="padding: 20px; text-align: center; color: #333;">Error: ${error.message}</div>`;
+            }
+        }
+
+        function renderOrders() {
+            const ordersList = document.getElementById('ordersList');
+            ordersList.innerHTML = orders.map((order, index) => {
+                const provider = order.provider || 'delfos';
+                const badge = `<span class="provider-badge ${provider}">${provider === 'tiptravel' ? 'TipTravel' : 'Delfos'}</span>`;
+                return `
+                <div class="order-item" data-index="${index}">
+                    <input type="checkbox" id="order-${index}" data-id="${order.id}">
+                    <div class="order-info">
+                        <div class="order-hotel">${badge} ${order.hotel_name || 'Hotel sin nombre'}</div>
+                        <div class="order-details">
+                            ${order.check_in} - ${order.check_out} | ${order.room_type || 'Sin tipo'} | ${order.meal_plan || 'Sin régimen'}
+                        </div>
+                    </div>
+                    <div class="order-price ${(order.booked_price || 0) > 500000 ? 'expensive' : ''}">
+                        US$ ${formatPrice(order.booked_price)}
+                    </div>
+                </div>
+            `}).join('');
+            
+            // Add event listeners to checkboxes
+            document.querySelectorAll('.order-item input[type="checkbox"]').forEach(checkbox => {
+                checkbox.addEventListener('change', updateSelection);
+            });
+        }
+
+        function selectAll() {
+            const maxJobs = parseInt(document.getElementById('maxJobsSelect').value);
+            const checkboxes = document.querySelectorAll('.order-item input[type="checkbox"]');
+            
+            checkboxes.forEach((cb, index) => {
+                if (maxJobs === 0 || index < maxJobs) {
+                    cb.checked = true;
+                } else {
+                    cb.checked = false;
+                }
+            });
+            updateSelection();
+        }
+
+        function deselectAll() {
+            document.querySelectorAll('.order-item input[type="checkbox"]').forEach(cb => {
+                cb.checked = false;
+            });
+            updateSelection();
+        }
+
+        function updateSelection() {
+            const maxJobs = parseInt(document.getElementById('maxJobsSelect').value);
+            const allCheckboxes = document.querySelectorAll('.order-item input[type="checkbox"]');
+            const checkedCheckboxes = document.querySelectorAll('.order-item input[type="checkbox"]:checked');
+            
+            // If maxJobs is set, limit selection (but don't uncheck already selected)
+            if (maxJobs > 0 && checkedCheckboxes.length > maxJobs) {
+                // Too many selected, uncheck the extras (from end to start)
+                allCheckboxes.forEach((cb, index) => {
+                    if (index >= maxJobs) {
+                        cb.checked = false;
+                    }
+                });
+            }
+            
+            selectedOrders = Array.from(document.querySelectorAll('.order-item input[type="checkbox"]:checked'))
+                .map(cb => cb.dataset.id);
+            
+            document.getElementById('selectedCount').textContent = `${selectedOrders.length} seleccionados`;
+            document.getElementById('jobsToRun').textContent = selectedOrders.length;
+            document.getElementById('startBtn').disabled = selectedOrders.length === 0;
+        }
+
+        async function startScraping() {
+            if (selectedOrders.length === 0) {
+                alert('Seleccione al menos una orden');
+                return;
+            }
+            
+            const startBtn = document.getElementById('startBtn');
+            startBtn.disabled = true;
+            startBtn.innerHTML = '<span class="btn-icon">⏳</span> Ejecutando...';
+            
+            const resultsDiv = document.getElementById('status');
+            resultsDiv.classList.remove('hidden');
+            resultsDiv.innerHTML = '<div style="padding: 10px; background: #e3f2fd; border-radius: 4px; margin-top: 10px;">Iniciando ' + selectedOrders.length + ' jobs...</div>';
+            
+            const sessionIds = [];
+            const jobResults = [];
+            
+            // Launch all jobs and COLLECT session IDs
+            for (let i = 0; i < selectedOrders.length; i++) {
+                const orderId = selectedOrders[i];
+                try {
+                    const response = await fetch(`/api/client/scrape/${orderId}`, {
+                        method: 'POST'
+                    });
+                    const data = await response.json();
+                    console.log(`Job ${i+1}/${selectedOrders.length} (${orderId}):`, data);
+                    
+                    // Collect session ID from response
+                    if (data.sessionId) {
+                        sessionIds.push(data.sessionId);
+                        jobResults.push({
+                            orderId: orderId,
+                            sessionId: data.sessionId,
+                            status: 'started'
+                        });
+                        start2FAPolling(data.sessionId);
+                    }
+                    
+                    // Update progress
+                    resultsDiv.innerHTML = `<div style="padding: 10px; background: #e3f2fd; border-radius: 4px; margin-top: 10px;">Ejecutando job ${i+1}/${selectedOrders.length}: ${orderId}</div>`;
+                } catch (error) {
+                    console.error(`Error en job ${orderId}:`, error);
+                    jobResults.push({
+                        orderId: orderId,
+                        sessionId: null,
+                        status: 'error',
+                        error: error.message
+                    });
+                }
+            }
+            
+            if (sessionIds.length === 0) {
+                resultsDiv.innerHTML = '<div style="padding: 10px; background: #ffebee; border-radius: 4px; margin-top: 10px;">Error: No se pudieron iniciar los jobs</div>';
+                startBtn.innerHTML = '<span class="btn-icon">▶</span> Iniciar Scraping';
+                startBtn.disabled = false;
+                return;
+            }
+            
+            // Now wait for all sessions to complete
+            resultsDiv.innerHTML = '<div style="padding: 10px; background: #fff3cd; border-radius: 4px; margin-top: 10px;">Esperando que terminen los jobs...</div>';
+            
+            const maxWaitTime = 300000; // 5 minutes max
+            const checkInterval = 3000; // Check every 3 seconds
+            const startTime = Date.now();
+            
+            let allCompleted = false;
+            while (!allCompleted && (Date.now() - startTime) < maxWaitTime) {
+                await new Promise(resolve => setTimeout(resolve, checkInterval));
+                
+                let completedCount = 0;
+                for (const sessionId of sessionIds) {
+                    try {
+                        const statusResponse = await fetch(`/api/scrap/status/${sessionId}`);
+                        const statusData = await statusResponse.json();
+                        if (statusData.status === 'completed' || statusData.status === 'failed' || statusData.status === 'cancelled') {
+                            completedCount++;
+                        }
+                    } catch (e) {
+                        console.warn(`Session ${sessionId} status check failed: ${e.message}`);
+                    }
+                }
+                
+                if (completedCount === sessionIds.length) {
+                    allCompleted = true;
+                } else {
+                    resultsDiv.innerHTML = `<div style="padding: 10px; background: #fff3cd; border-radius: 4px; margin-top: 10px;">Procesando: ${completedCount}/${sessionIds.length} jobs completados...</div>`;
+                }
+            }
+            
+            // Add button to view ALL results
+            let resultsHTML = '';
+            const allSessionsParam = sessionIds.join(',');
+            resultsHTML += '<div style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">';
+            resultsHTML += `<a href="/results?sessionId=${allSessionsParam}" class="btn-primary" style="display: inline-block; padding: 10px 20px; background: #2196F3; color: white; text-decoration: none; border-radius: 4px;">📊 Ver Todos los Resultados</a>`;
+            resultsHTML += `<a href="/results?sessionId=latest" class="btn-secondary" style="display: inline-block; padding: 10px 20px; background: #6c757d; color: white; text-decoration: none; border-radius: 4px;">📊 Ver Resultados Recientes</a>`;
+            resultsHTML += '</div>';
+            
+            resultsDiv.innerHTML = resultsHTML;
+            
+            startBtn.innerHTML = '<span class="btn-icon">▶</span> Iniciar Scraping';
+            startBtn.disabled = false;
+            
+            alert(`Scraping completado: ${sessionIds.length} jobs ejecutados`);
+        }
+
+        // ----- Two-factor authentication (2FA) -----
+
+        function show2FAInput(sessionId, message) {
+            const section = document.getElementById('twofaSection');
+            const msgEl = document.getElementById('twofaMessage');
+            const input = document.getElementById('twofaInput');
+            msgEl.textContent = `Sesión ${sessionId}: ${message || 'Ingresa el código de verificación enviado a tu email.'}`;
+            section.classList.add('active');
+            input.value = '';
+            input.disabled = false;
+            document.getElementById('twofaSubmitBtn').disabled = false;
+            document.getElementById('twofaSubmitBtn').textContent = 'Enviar código';
+            setTimeout(() => input.focus(), 100);
+        }
+
+        function hide2FAInput() {
+            const section = document.getElementById('twofaSection');
+            section.classList.remove('active');
+        }
+
+        async function submit2FACode() {
+            const input = document.getElementById('twofaInput');
+            const btn = document.getElementById('twofaSubmitBtn');
+            const code = (input.value || '').trim();
+            if (!code) {
+                input.focus();
+                return;
+            }
+
+            const sessionId = active2FASessions.values().next().value;
+            if (!sessionId) {
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Enviando...';
+            input.disabled = true;
+
+            try {
+                const response = await fetch(`/api/client/scrape/session/${encodeURIComponent(sessionId)}/2fa`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    alert('Error: ' + (data.error || 'No se pudo enviar el código'));
+                    btn.disabled = false;
+                    btn.textContent = 'Reenviar código';
+                    input.disabled = false;
+                    input.focus();
+                    return;
+                }
+                btn.textContent = '✅ Enviado';
+                hide2FAInput();
+                active2FASessions.delete(sessionId);
+            } catch (err) {
+                alert('Error de conexión: ' + err.message);
+                btn.disabled = false;
+                btn.textContent = 'Reenviar código';
+                input.disabled = false;
+            }
+        }
+
+        function start2FAPolling(sessionId) {
+            if (active2FASessions.has(sessionId)) return;
+            active2FASessions.set(sessionId, sessionId);
+            const interval = setInterval(async () => {
+                try {
+                    const res = await fetch(`/api/client/scrape/session/${encodeURIComponent(sessionId)}/2fa`);
+                    if (!res.ok) {
+                        active2FASessions.delete(sessionId);
+                        clearInterval(interval);
+                        hide2FAInput();
+                        return;
+                    }
+                    const data = await res.json();
+                    if (data.needs2FA) {
+                        show2FAInput(sessionId, data.message);
+                    } else {
+                        active2FASessions.delete(sessionId);
+                        clearInterval(interval);
+                        hide2FAInput();
+                    }
+                } catch (e) {
+                    // ignore transient errors, keep polling
+                }
+            }, 2500);
+
+            // Stop polling automatically after 5 minutes to avoid leaking timers
+            setTimeout(() => {
+                clearInterval(interval);
+                active2FASessions.delete(sessionId);
+                hide2FAInput();
+            }, 5 * 60 * 1000);
+        }
+    </script>
 </body>
 </html>
