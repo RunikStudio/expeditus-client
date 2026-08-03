@@ -5,6 +5,18 @@ const progressPercentEl = document.getElementById('progressPercent');
 const cancelBtn = document.getElementById('cancelBtn');
 const viewResultsBtn = document.getElementById('viewResultsBtn');
 
+// Format price: input comes in cents (e.g. 23000 = $230.00)
+function formatPrice(cents) {
+    const value = (cents || 0) / 100;
+    return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Nuevos elementos para el estado del scraper
+const currentHotelEl = document.getElementById('currentHotel');
+const currentActionEl = document.getElementById('currentAction');
+const elapsedTimeEl = document.getElementById('elapsedTime');
+const pricesFoundEl = document.getElementById('pricesFound');
+
 const sessionId = new URLSearchParams(window.location.search).get('sessionId');
 
 if (!sessionId) {
@@ -55,30 +67,49 @@ function updateProgress(data) {
     
     const stage = data.stage || 'login';
     
-    // Skip updateStage for "complete" stage - it will be handled by status check
-    if (stage !== 'complete' && stage !== 'done') {
-        updateStage(stage, progress);
+    // Actualizar estado actual del scraper
+    if (data.currentHotel) {
+        currentHotelEl.textContent = data.currentHotel;
     }
     
-    document.getElementById('itemsProcessed').textContent = data.processed || 0;
-    document.getElementById('speed').textContent = data.speed || '0';
+    if (data.currentAction) {
+        currentActionEl.textContent = data.currentAction;
+    }
+    
+    if (data.elapsedTime) {
+        elapsedTimeEl.textContent = data.elapsedTime;
+    }
+    
+    // Actualizar estadísticas
+    document.getElementById('itemsProcessed').textContent = data.roomsFound || data.processed || 0;
+    document.getElementById('pricesFound').textContent = data.pricesFound || 0;
+    document.getElementById('speed').textContent = data.speed || '--';
     document.getElementById('eta').textContent = data.eta || '--:--';
     
-    if (data.status === 'completed') {
+    // Actualizar estado del badge
+    const status = data.status || data.stage;
+    if (status === 'completed' || stage === 'complete' || stage === 'done') {
         statusEl.textContent = 'Completado';
         statusEl.className = 'badge completed';
         overallProgressEl.classList.add('complete');
+        currentActionEl.textContent = '✅ Scraping completado exitosamente';
         viewResultsBtn.classList.remove('hidden');
         
         if (ws) ws.close();
-    } else if (data.status === 'failed') {
+    } else if (status === 'failed') {
         statusEl.textContent = 'Fallido';
         statusEl.className = 'badge failed';
+        currentActionEl.textContent = '❌ Error en el proceso de scraping';
         
         if (ws) ws.close();
     } else {
         statusEl.textContent = 'Ejecutando';
         statusEl.className = 'badge running';
+    }
+    
+    // Skip updateStage for "complete" stage - it will be handled by status check
+    if (stage !== 'complete' && stage !== 'done') {
+        updateStage(stage, progress);
     }
 }
 
@@ -87,11 +118,15 @@ function updateStage(stage, progress) {
         'login': { stageId: 'stage-login', progressId: 'loginProgress', statusId: 'loginStatus' },
         'navigation': { stageId: 'stage-navigation', progressId: 'navProgress', statusId: 'navStatus' },
         'scraping': { stageId: 'stage-scraping', progressId: 'scrapingProgress', statusId: 'scrapingStatus' },
+        'searching': { stageId: 'stage-scraping', progressId: 'scrapingProgress', statusId: 'scrapingStatus' },
         'processing': { stageId: 'stage-processing', progressId: 'processProgress', statusId: 'processStatus' }
     };
     
     const stages = ['login', 'navigation', 'scraping', 'processing'];
     const stageIndex = stages.indexOf(stage);
+    
+    // Mapear 'searching' a 'scraping' para el índice
+    const stageIndexCalc = stage === 'searching' ? 2 : stageIndex;
     
     stages.forEach((s, i) => {
         const map = stageMap[s];
@@ -99,28 +134,84 @@ function updateStage(stage, progress) {
         
         const el = document.getElementById(map.stageId);
         const progressEl = document.getElementById(map.progressId);
-        const statusEl = document.getElementById(map.statusId);
+        const statusElStage = document.getElementById(map.statusId);
         
-        if (!el || !progressEl || !statusEl) {
+        if (!el || !progressEl || !statusElStage) {
             return;
         }
         
-        if (i < stageIndex) {
+        if (i < stageIndexCalc) {
             el.classList.add('complete');
             el.classList.remove('active');
             progressEl.style.width = '100%';
-            statusEl.textContent = 'Completado';
-        } else if (i === stageIndex) {
+            statusElStage.textContent = '✓ Completado';
+        } else if (i === stageIndexCalc) {
             el.classList.add('active');
             el.classList.remove('complete');
             progressEl.style.width = `${progress}%`;
-            statusEl.textContent = 'Ejecutando...';
+            statusElStage.textContent = '⚡ Ejecutando...';
         } else {
             el.classList.remove('active', 'complete');
             progressEl.style.width = '0%';
-            statusEl.textContent = 'Pendiente';
+            statusElStage.textContent = '⏳ Pendiente';
         }
     });
+}
+
+async function fetchAndDisplayResults(sessionId) {
+    try {
+        const response = await fetch(`/api/scrap/results/${sessionId}`);
+        const data = await response.json();
+        
+        const resultsBody = document.getElementById('resultsBody');
+        if (!resultsBody) return;
+        
+        resultsBody.innerHTML = '';
+        
+        const results = Array.isArray(data) ? data : (data.results || []);
+        
+        if (results.length === 0) {
+            resultsBody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Sin resultados</td></tr>';
+            return;
+        }
+        
+        results.forEach(result => {
+            const row = document.createElement('tr');
+            
+            const hotelName = result.hotelName || result.data?.hotelName || '-';
+            const roomType = result.roomType || result.data?.roomType || '-';
+            const mealPlan = result.mealPlan || result.data?.mealPlan || '-';
+            const bookedPrice = result.bookedPrice || result.data?.bookedPrice || result.price || 0;
+            const currentPrice = result.currentPrice || result.data?.currentPrice || result.price || 0;
+            const currency = result.currency || result.data?.currency || 'US$';
+            const timestamp = result.timestamp || result.data?.timestamp || new Date().toLocaleString();
+            
+            const diff = currentPrice - bookedPrice;
+            const diffClass = diff <= 0 ? 'positive' : 'negative';
+            const diffFormatted = `${diff >= 0 ? '+' : ''}${currency} ${diff.toFixed(2)}`;
+            
+            row.innerHTML = `
+                <td>${hotelName}</td>
+                <td>${roomType}</td>
+                <td>${mealPlan}</td>
+                <td>${currency} ${formatPrice(bookedPrice)}</td>
+                <td>${currency} ${formatPrice(currentPrice)}</td>
+                <td class="${diffClass}">${diffFormatted}</td>
+                <td>${timestamp}</td>
+            `;
+            
+            resultsBody.appendChild(row);
+        });
+        
+        document.getElementById('currentAction').textContent = '✅ Scraping completado - Resultados cargados';
+        
+    } catch (error) {
+        console.error('Error loading results:', error);
+        const resultsBody = document.getElementById('resultsBody');
+        if (resultsBody) {
+            resultsBody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:red;">Error cargando resultados</td></tr>';
+        }
+    }
 }
 
 cancelBtn.addEventListener('click', async () => {
@@ -135,6 +226,7 @@ cancelBtn.addEventListener('click', async () => {
         
         statusEl.textContent = 'Cancelado';
         statusEl.className = 'badge failed';
+        currentActionEl.textContent = '❌ Proceso cancelado por el usuario';
         
         if (ws) ws.close();
     } catch (error) {
@@ -143,7 +235,14 @@ cancelBtn.addEventListener('click', async () => {
 });
 
 viewResultsBtn.addEventListener('click', () => {
-    window.location.href = `/results?sessionId=${sessionId}`;
+    viewResultsBtn.classList.add('hidden');
+    
+    const resultsSection = document.getElementById('resultsSection');
+    if (resultsSection) {
+        resultsSection.classList.remove('hidden');
+    }
+    
+    fetchAndDisplayResults(sessionId);
 });
 
 connectWebSocket();
@@ -173,10 +272,10 @@ setInterval(async () => {
                     const map = stageMap[s];
                     const el = document.getElementById(map.stageId);
                     const progressEl = document.getElementById(map.progressId);
-                    const statusEl = document.getElementById(map.statusId);
+                    const statusElStage = document.getElementById(map.statusId);
                     if (el) el.classList.add('complete');
                     if (progressEl) progressEl.style.width = '100%';
-                    if (statusEl) statusEl.textContent = 'Completado';
+                    if (statusElStage) statusElStage.textContent = '✓ Completado';
                 });
             }
         }

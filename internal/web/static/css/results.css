@@ -2,6 +2,130 @@
     margin-bottom: 2rem;
 }
 
+.progress-section {
+    background: var(--white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.progress-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: var(--gray-800);
+}
+
+.progress-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.progress-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--gray-50);
+    border-radius: var(--radius);
+    border-left: 4px solid var(--primary);
+}
+
+.progress-item.completed {
+    border-left-color: var(--success);
+}
+
+.progress-item.failed {
+    border-left-color: var(--danger);
+}
+
+.progress-item.running {
+    border-left-color: var(--primary);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.progress-item-header {
+    flex: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.progress-item-title {
+    font-weight: 600;
+    color: var(--gray-800);
+}
+
+.progress-item-status {
+    font-size: 0.875rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius);
+}
+
+.progress-item-status.pending {
+    background: var(--gray-200);
+    color: var(--gray-600);
+}
+
+.progress-item-status.running {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.progress-item-status.completed {
+    background: #e8f5e9;
+    color: #388e3c;
+}
+
+.progress-item-status.failed {
+    background: #ffebee;
+    color: #d32f2f;
+}
+
+.progress-item-details {
+    font-size: 0.875rem;
+    color: var(--gray-600);
+    margin-top: 0.5rem;
+}
+
+.progress-bar {
+    height: 8px;
+    background: var(--gray-200);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 0.5rem;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.progress-bar-fill.completed {
+    background: var(--success);
+}
+
+.progress-bar-fill.failed {
+    background: var(--danger);
+}
+
 .controls {
     display: flex;
     justify-content: space-between;

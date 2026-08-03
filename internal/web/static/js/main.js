@@ -20,6 +20,8 @@ startBtn.addEventListener('click', async () => {
         if (response.ok) {
             currentSessionId = data.sessionId;
             showStatus('Sesión iniciada correctamente', 'success');
+            // Update login status
+            updateLoginStatus('Sesión activa');
             setTimeout(() => {
                 window.location.href = `/progress?sessionId=${currentSessionId}`;
             }, 1000);
@@ -40,3 +42,22 @@ function showStatus(message, type) {
     statusDiv.className = `status ${type}`;
     statusDiv.classList.remove('hidden');
 }
+
+function updateLoginStatus(status) {
+    const loginStatus = document.getElementById('loginStatus');
+    const loginStatusText = document.getElementById('loginStatusText');
+    
+    if (loginStatus && loginStatusText) {
+        loginStatusText.textContent = status;
+        if (status === 'Sesión activa') {
+            loginStatus.className = 'login-status logged-in';
+        } else {
+            loginStatus.className = 'login-status not-logged-in';
+        }
+    }
+}
+
+// Set initial status - no active session on page load
+document.addEventListener('DOMContentLoaded', () => {
+    updateLoginStatus('No conectado');
+});

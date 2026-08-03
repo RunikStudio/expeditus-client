@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Resultados - Expeditus</title>
-    <link rel="stylesheet" href="/static/css/main.css">
-    <link rel="stylesheet" href="/static/css/results.css">
+    <link rel="stylesheet" href="/static/css/main.css?v=3">
+    <link rel="stylesheet" href="/static/css/results.css?v=3">
 </head>
 <body>
     <div class="container">
@@ -15,6 +15,19 @@
         </header>
 
         <main>
+            <!-- Progress Indicator Section -->
+            <section id="progressSection" class="progress-section">
+                <div class="progress-header">
+                    <h2>Estado del Scraping</h2>
+                    <button id="refreshProgressBtn" class="btn-secondary">🔄 Actualizar</button>
+                </div>
+                <div id="progressList" class="progress-list">
+                    <div style="padding: 20px; text-align: center; color: #999;">
+                        Cargando estado de los jobs...
+                    </div>
+                </div>
+            </section>
+
             <section class="summary">
                 <div class="card stats-grid">
                     <div class="stat">
@@ -46,18 +59,20 @@
                 <table id="resultsTable">
                     <thead>
                         <tr>
-                            <th>ID</th>
-                            <th>Nombre</th>
-                            <th>Tipo</th>
-                            <th>Precio Máximo</th>
+                            <th>Hotel</th>
+                            <th>Habitación</th>
+                            <th>Régimen</th>
+                            <th>Huéspedes</th>
+                            <th>Precio Reservado</th>
                             <th>Precio Encontrado</th>
+                            <th>Moneda</th>
                             <th>Fecha</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody id="resultsBody">
                         <tr class="empty-row">
-                            <td colspan="7">No hay resultados disponibles</td>
+                            <td colspan="9">No hay resultados disponibles</td>
                         </tr>
                     </tbody>
                 </table>
@@ -67,6 +82,12 @@
                 <button id="prevPage" class="btn-secondary" disabled>Anterior</button>
                 <span id="pageInfo">Página 1 de 1</span>
                 <button id="nextPage" class="btn-secondary" disabled>Siguiente</button>
+            </section>
+
+            <!-- Debug section - shows raw data -->
+            <section class="debug-section" style="margin-top: 20px; padding: 10px; background: #f5f5f5; border: 1px solid #ccc;">
+                <h3>Debug Info</h3>
+                <pre id="debugData" style="white-space: pre-wrap; word-wrap: break-word; max-height: 300px; overflow-y: auto;"></pre>
             </section>
         </main>
     </div>
@@ -81,6 +102,6 @@
         </div>
     </div>
 
-    <script src="/static/js/results.js"></script>
+    <script src="/static/js/results.js?v=3"></script>
 </body>
 </html>
